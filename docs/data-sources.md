@@ -71,23 +71,58 @@ Non-PD sources are flagged and carry attribution or non-commercial terms — not
 | HRSA shortage areas (HPSA) | `data.hrsa.gov` | county, sub-county | current | PD |
 | CMS hospital quality | `data.cms.gov/provider-data/` | facility → county | annual | PD |
 
-## Safety
+## Safety — physical risk, not crime alone
 
 | Source | URL | Geo | Vintage | License |
 |---|---|---|---|---|
 | FBI Crime Data Explorer | `cde.ucr.cjis.gov` | agency → county | annual | PD |
+| CDC WONDER mortality | `wonder.cdc.gov` | county | 2023 | PD |
+| NHTSA FARS crash fatalities | `nhtsa.gov/file-downloads` | county | 2023 | PD |
 
-> **Coverage warning.** FBI reporting is voluntary and the NIBRS transition left real gaps;
-> some states have poor agency participation. Gaps are flagged, never imputed
-> (Principle 6). Phase 2 decides whether to down-weight the safety domain where coverage is
-> thin. See `CONTEXT.md` Open Question #7.
+> **Why this domain is broader than crime.** FBI reporting is voluntary and the NIBRS
+> transition left real gaps — some states have poor agency participation. CDC WONDER and
+> FARS are built from death certificates and crash records, so their coverage is close to
+> complete exactly where FBI data has holes.
+>
+> It also measures the right thing. Per-capita **road fatality** rates run several times
+> higher in rural counties than in dense metros and frequently exceed the absolute risk
+> difference from crime — a factor almost no relocation research counts. Overdose and
+> firearm mortality are included on the same reasoning.
+>
+> **Caveats, both flagged rather than imputed (Principle 6):** FBI agency gaps, and CDC
+> WONDER's suppression of county-year cells with fewer than 10 deaths — which bites hardest
+> in small counties, so it must not be read as "safe." See `CONTEXT.md` Open Question #7.
 
-## Education and family
+## Education
 
 | Source | URL | Geo | Vintage | License |
 |---|---|---|---|---|
+| **Stanford Education Data Archive (SEDA)** | `edopportunity.org/get-the-data/` | district | v5.0 | Free w/ citation |
 | NCES Common Core of Data | `nces.ed.gov/ccd/` | district, school | annual | PD |
+| NCES EDGE district relationship files | `nces.ed.gov/programs/edge/` | district → county | 2024 | PD |
 | Urban Institute Education Data API | `educationdata.urban.org` | district, school | annual | Free w/ attribution |
+
+> **SEDA is the reason this domain is trustworthy.** It publishes *learning rates* — how
+> much students improve per grade — alongside raw achievement levels.
+>
+> Scoring schools on raw test scores is the standard approach and it is close to useless
+> here: district proficiency correlates heavily with local family income, so a raw-score
+> ranking largely measures how wealthy the neighbours are and calls it school quality. It
+> would also collide with the cost domain, quietly pushing the ranking toward expensive
+> places. Growth measures what the schools do rather than who attends them.
+>
+> Both are registered as separate indicators, because districts where they *disagree* are
+> the informative ones — low scores with high growth is a very different bet from the
+> reverse.
+>
+> **Geography note:** school districts do not nest inside counties or places. NCES EDGE
+> relationship files carry SEDA's district values onto the universe; the indicator registry
+> records this explicitly via `crosswalk_from`.
+
+## Family and childcare
+
+| Source | URL | Geo | Vintage | License |
+|---|---|---|---|---|
 | DOL National Database of Childcare Prices | `dol.gov/agencies/wb/topics/childcare/price-by-age-care-setting` | county | 2022 | PD |
 
 ## Connectivity and amenities

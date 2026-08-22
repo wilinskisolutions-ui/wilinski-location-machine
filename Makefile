@@ -1,10 +1,12 @@
 PY := PYTHONPATH=src python3
+PYTEST := PYTHONPATH=src:tests python3
 
 .PHONY: help validate test data universe features score diagnostics report clean
 
 help:
 	@echo "validate     Check config registries against the GOAL.md principles"
 	@echo "test         Run the test suite"
+	@echo "demo         Run the built stages on synthetic fixtures (no network needed)"
 	@echo "data         Download + checksum all sources (needs network - see docs/network-allowlist.md)"
 	@echo "universe     Build the fixed candidate universe          [Phase 1]"
 	@echo "features     Join, transform, percentile-rank            [Phase 2]"
@@ -16,9 +18,9 @@ validate:
 	@$(PY) -m wlm.config.validate
 
 test:
-	@$(PY) -m unittest discover -s tests
+	@$(PYTEST) -m unittest discover -s tests
 
-data universe features score diagnostics report:
+data universe features score diagnostics report demo:
 	@$(PY) -m wlm.cli $@
 
 clean:

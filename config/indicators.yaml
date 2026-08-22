@@ -151,24 +151,32 @@ indicators:
   - id: form_population
     domain: urban_form
     label: Place population
-    source: census_gazetteer
+    source: census_acs5
     geo_level: place
     curve: ideal_band
-    curve_params: {lo: 25000, hi: 250000, shoulder: 50000}
+    curve_params: {lo: 25000, hi: 250000, shoulder: 50000, shoulder_lo: 8000}
     unit: people
     provisional: true
-    notes: The canonical band case — a z-score would rank a 4M-person county above the ideal town.
+    notes: >
+      The canonical band case — a percentile would rank a 4M-person county above the ideal
+      town. `shoulder_lo` is much tighter than the upper shoulder because population is
+      effectively logarithmic: a symmetric shoulder scores a 500-person village 0.51, which
+      is not what "too small" means.
 
   - id: form_population_density
     domain: urban_form
     label: Population per square mile
-    source: census_gazetteer
+    source: census_acs5
     geo_level: place
     curve: ideal_band
     curve_params: {lo: 1500, hi: 6000, shoulder: 2000}
     unit: people/sqmi
     transform: log
     provisional: true
+    notes: >
+      Derived: ACS population over Gazetteer land area, which the universe table already
+      carries. Sourced to ACS because that is where the numerator comes from — the
+      Gazetteer files contain geography only and no population at all.
 
   - id: form_mean_commute
     domain: urban_form
@@ -236,30 +244,90 @@ indicators:
     curve: higher_better
     unit: percent
 
-  # ---------------- family_services ----------------
-  - id: family_childcare_cost_infant
-    domain: family_services
-    label: Median infant center-based childcare price
-    source: dol_childcare
-    geo_level: county
-    curve: lower_better
-    unit: USD/year
+  # ---------------- education ----------------
+  # Split out of the former `family_services` on 2026-08-22 so schools and childcare can
+  # carry independent weights.
+  #
+  # `crosswalk_from: district` records that SEDA publishes at school-district level, which
+  # does not nest inside counties — NCES EDGE relationship files carry it onto the universe.
+  # Declared here so the derivation is visible in the registry, not buried in ingest code.
 
-  - id: family_school_spend_per_pupil
-    domain: family_services
+  - id: edu_learning_rate
+    domain: education
+    label: Learning rate (grade-level growth per year, SEDA)
+    source: seda_stanford
+    geo_level: county
+    crosswalk_from: district
+    curve: higher_better
+    unit: grade_levels/year
+    notes: >
+      The load-bearing education indicator. Measures how much students improve, which is
+      far less confounded by family income than raw achievement — it scores what the
+      schools do rather than who attends them.
+
+  - id: edu_achievement_level
+    domain: education
+    label: Average achievement level (SEDA)
+    source: seda_stanford
+    geo_level: county
+    crosswalk_from: district
+    curve: higher_better
+    unit: grade_levels
+    notes: >
+      Registered alongside learning rate deliberately, NOT as a substitute. Correlates
+      heavily with local family income, so on its own it largely measures neighbourhood
+      wealth. Its value is the disagreement: low achievement with high growth is a very
+      different place from the reverse.
+
+  - id: edu_spend_per_pupil
+    domain: education
     label: Current expenditure per pupil
     source: urban_educationdata
     geo_level: county
     curve: higher_better
     unit: USD
 
-  - id: family_student_teacher_ratio
-    domain: family_services
+  - id: edu_student_teacher_ratio
+    domain: education
     label: Student-teacher ratio
     source: nces_ccd
     geo_level: county
     curve: lower_better
     unit: ratio
+
+  - id: edu_graduation_rate
+    domain: education
+    label: Adjusted cohort graduation rate
+    source: urban_educationdata
+    geo_level: county
+    curve: higher_better
+    unit: share
+
+  - id: edu_district_choice_count
+    domain: education
+    label: Number of school districts serving the area
+    source: nces_ccd
+    geo_level: county
+    curve: higher_better
+    unit: count
+    notes: Proxy for school choice without moving house.
+
+  # ---------------- family_childcare ----------------
+  - id: family_childcare_cost_infant
+    domain: family_childcare
+    label: Median infant center-based childcare price
+    source: dol_childcare
+    geo_level: county
+    curve: lower_better
+    unit: USD/year
+
+  - id: family_childcare_cost_toddler
+    domain: family_childcare
+    label: Median toddler center-based childcare price
+    source: dol_childcare
+    geo_level: county
+    curve: lower_better
+    unit: USD/year
 
   # ---------------- health_care ----------------
   - id: health_life_expectancy
@@ -303,6 +371,40 @@ indicators:
     geo_level: county
     curve: lower_better
     unit: per100k
+
+  # Broadened from crime-only on 2026-08-22. These come from death certificates and crash
+  # records rather than voluntary police reporting, so coverage is near-complete exactly
+  # where FBI data has gaps.
+
+  - id: safety_traffic_fatality_rate
+    domain: safety
+    label: Motor vehicle fatalities per 100,000
+    source: nhtsa_fars
+    geo_level: county
+    curve: lower_better
+    unit: per100k
+    notes: >
+      Per-capita road death rates run several times higher in rural counties than dense
+      metros and frequently exceed the absolute risk difference from crime. Almost no
+      relocation research counts it.
+
+  - id: safety_overdose_death_rate
+    domain: safety
+    label: Drug overdose deaths per 100,000
+    source: cdc_wonder
+    geo_level: county
+    curve: lower_better
+    unit: per100k
+    notes: CDC WONDER suppresses county cells under 10 deaths — flag, never read as zero.
+
+  - id: safety_firearm_death_rate
+    domain: safety
+    label: Firearm deaths per 100,000
+    source: cdc_wonder
+    geo_level: county
+    curve: lower_better
+    unit: per100k
+    notes: All manners of death combined; suppression caveat as above.
 
   # ---------------- recreation_lifestyle ----------------
   - id: rec_park_access

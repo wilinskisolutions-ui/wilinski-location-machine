@@ -1,0 +1,12 @@
+STATE,STATEABBRV,STCOFIPS,COUNTY,POPULATION,RISK_SCORE,RISK_RATNG,HRCN_RISKS,WFIR_RISKS
+North Carolina,NC,37183,Wake,1150000,22.41,Relatively Moderate,11.20,4.31
+North Carolina,NC,37101,Johnston,240000,17.83,Relatively Low,13.44,6.02
+North Carolina,NC,37021,Buncombe,270000,14.09,Relatively Low,2.11,9.87
+Oregon,OR,41029,Jackson,223000,31.66,Relatively High,,38.55
+Michigan,MI,26077,Kalamazoo,262000,9.74,Very Low,,1.02
+Pennsylvania,PA,42027,Centre,158000,7.15,Very Low,0.88,0.94
+Montana,MT,30031,Gallatin,122000,12.38,Relatively Low,,21.73
+Vermont,VT,50007,Chittenden,169000,6.42,Very Low,,0.51
+Maine,ME,23005,Cumberland,303000,10.87,Relatively Low,3.02,1.88
+Iowa,IA,19113,Linn,230000,15.55,Relatively Low,,0.77
+Puerto Rico,PR,72127,San Juan,342000,44.20,Very High,71.02,0.30

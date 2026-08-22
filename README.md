@@ -1,7 +1,7 @@
 # Wilinski Location Machine
 
 Deciding where to live in the US by weighing evidence over **every** county and
-incorporated place in the country — rather than by reading whatever the internet is
+place in the country over 5,000 people — rather than by reading whatever the internet is
 currently writing about.
 
 ## Why
@@ -13,7 +13,8 @@ the places that profit from inbound moves, and migration coverage is self-reinfo
 A shortlist built that way looks the same for a retired couple, a young family, and a
 remote-working introvert, which is proof it encodes nothing about anyone in particular.
 
-About 3,100 counties and 19,000 incorporated places exist here. Any process that keeps
+About 3,100 counties and 19,000 incorporated places exist here, plus thousands of
+unincorporated communities. Any process that keeps
 returning the same dozen is not searching.
 
 ## How
@@ -42,26 +43,33 @@ that contradicts it. Then **[`CONTEXT.md`](CONTEXT.md)** for current state.
 
 ```bash
 make validate   # check config registries against the GOAL.md principles
-make test       # run the test suite
-make help       # list pipeline stages
+make test       # run the test suite (90 tests, no network needed)
+make demo       # run the whole chain on synthetic fixtures
+make data       # download the real sources (needs the egress allowlist)
 ```
 
-Both run with PyYAML alone — no install step. Analysis dependencies arrive with the
-Phase 1 pipeline (`pip install -e ".[pipeline]"`).
+`validate` needs PyYAML alone. The pipeline stages need `pip install -e ".[pipeline]"`.
+
+`make demo` is the quickest way to see what exists: it builds a universe, ingests three
+sources, computes percentiles and coverage, then shows scoring **refusing** to run on
+synthetic input.
 
 ## Status
 
-**Phase 0 — Charter: complete.** No pipeline yet, by design; the rules come first.
+**Phase 1 — Universe: built.** The universe builder, provenance layer, three ingest
+modules, and the features stage all run end to end. They run on *synthetic fixtures* only,
+because the data hosts are still blocked — and the synthetic guardrail makes it impossible
+for those fixtures to reach a real result.
 
 | Phase | Deliverable | Status |
 |---|---|---|
 | 0 — Charter | Principles, methodology, registries, scaffolding | done |
-| 1 — Universe | Fixed candidate set, pipeline proven on 3-4 sources | next |
+| 1 — Universe | Fixed candidate set, pipeline proven on 3-4 sources | **built, awaiting real data** |
 | 2 — Ingest | 40-60 indicators, coverage report | |
 | 3 — Questionnaire | Question bank, elicited weights, calibration set | |
 | 4 — Engine | Scoring, sensitivity, anti-bias diagnostics, report | |
 | 5 — Shortlist | Top ~25 deep dive, blind evaluation | |
 | 6 — Field | Visit plan and final decision | |
 
-Phase 1 is blocked on two things, both in `CONTEXT.md` → Next actions: household review of
-the ten principles and twelve domains, and the network allowlist.
+Phase 2 is blocked on the network allowlist in `docs/network-allowlist.md` — the pipeline
+is written and tested, it just has no real data to run on yet.

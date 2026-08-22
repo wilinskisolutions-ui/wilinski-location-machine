@@ -21,7 +21,10 @@ ROOT = Path(__file__).resolve().parents[3]
 CONFIG = ROOT / "config"
 DOCS = ROOT / "docs"
 
-GEO_LEVELS = {"county", "place", "metro", "state"}
+# "district" is school-district geography. It does not nest inside counties or places,
+# so an indicator sourced at district level declares `crosswalk_from: district` and the
+# level it lands at in `geo_level`.
+GEO_LEVELS = {"county", "place", "metro", "state", "district"}
 CURVES = {"higher_better", "lower_better", "ideal_band", "ideal_point"}
 TRANSFORMS = {"none", "log", "sqrt", "per_capita"}
 MONOTONE = {"higher_better", "lower_better"}
@@ -132,13 +135,31 @@ def check_indicators(indicators: list[dict], domains: list[dict], sources: list[
             err(f"indicator '{iid}': unknown source '{src}' (not in config/sources.yaml)")
 
         geo = ind.get("geo_level")
+        xfrom = ind.get("crosswalk_from")
         if geo not in GEO_LEVELS:
             err(f"indicator '{iid}': geo_level '{geo}' not in {sorted(GEO_LEVELS)}")
-        elif src in smap and geo not in (smap[src].get("geo_levels") or []):
-            err(
-                f"indicator '{iid}': geo_level '{geo}' not offered by source '{src}' "
-                f"(offers {smap[src].get('geo_levels')})"
-            )
+        elif src in smap:
+            offered = smap[src].get("geo_levels") or []
+            if xfrom is None:
+                # No crosswalk: the source must natively provide the level it lands at.
+                if geo not in offered:
+                    err(
+                        f"indicator '{iid}': geo_level '{geo}' not offered by source '{src}' "
+                        f"(offers {offered}) — add 'crosswalk_from' if it is derived"
+                    )
+            else:
+                # Crosswalked: the source provides `crosswalk_from`, the pipeline maps it
+                # onto `geo_level`. Recorded here so the derivation is visible in the
+                # registry rather than buried in an ingest module.
+                if xfrom not in GEO_LEVELS:
+                    err(f"indicator '{iid}': crosswalk_from '{xfrom}' not in {sorted(GEO_LEVELS)}")
+                elif xfrom not in offered:
+                    err(
+                        f"indicator '{iid}': crosswalk_from '{xfrom}' not offered by source "
+                        f"'{src}' (offers {offered})"
+                    )
+                if xfrom == geo:
+                    err(f"indicator '{iid}': crosswalk_from equals geo_level ('{geo}') — drop it")
 
         tr = ind.get("transform", "none")
         if tr not in TRANSFORMS:
@@ -197,6 +218,10 @@ def check_curve(ind: dict, iid: str) -> None:
             err(f"indicator '{iid}': ideal_band requires 'shoulder' (decay width outside the band)")
         elif not isinstance(sh, (int, float)) or sh <= 0:
             err(f"indicator '{iid}': ideal_band shoulder must be a positive number, got {sh!r}")
+        # Optional per-side overrides, for quantities whose scale is not linear.
+        for side in ("shoulder_lo", "shoulder_hi"):
+            if (v := params.get(side)) is not None and (not isinstance(v, (int, float)) or v <= 0):
+                err(f"indicator '{iid}': ideal_band {side} must be a positive number, got {v!r}")
 
     elif curve == "ideal_point":
         if not isinstance(params.get("target"), (int, float)):

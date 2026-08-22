@@ -9,7 +9,8 @@
 ## Mission
 
 Determine where the Wilinski household — two partners — should actually live in the United States, by scoring
-**every** US county and **every** incorporated place above ~5,000 people against a set of
+**every** US county and **every** place above ~5,000 people — incorporated municipalities
+and census designated places alike — against a set of
 weighted preferences they define themselves — using versioned public data, identical
 treatment for every candidate, and diagnostics that prove the answer is not tracking
 internet popularity.
@@ -39,7 +40,8 @@ A shortlist produced this way is manufactured by content economics, not by fit. 
 look identical for a retired couple, a young family, and a remote-working introvert —
 which is proof it encodes nothing about *them*.
 
-**Roughly 3,100 counties and 19,000 incorporated places exist in the United States.**
+**Roughly 3,100 counties and 19,000 incorporated places exist in the United States**, plus
+thousands of unincorporated communities.
 Any process that keeps surfacing the same dozen is not searching. This project searches.
 
 ---

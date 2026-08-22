@@ -137,6 +137,70 @@ class TestIndicators(unittest.TestCase):
         self.assertEqual(v.errors, [])
 
 
+class TestCrosswalk(unittest.TestCase):
+    """School districts do not nest inside counties, so district-sourced indicators declare
+    `crosswalk_from`. The registry records the derivation instead of hiding it in code."""
+
+    def setUp(self):
+        _reset()
+
+    def _run(self, ind, source):
+        v.check_indicators([ind], [_domain()], [source])
+
+    def test_district_source_without_crosswalk_is_rejected(self):
+        self._run(
+            _indicator(geo_level="county"),
+            _source(geo_levels=["district"]),
+        )
+        self.assertTrue(any("add 'crosswalk_from'" in e for e in v.errors))
+
+    def test_crosswalk_from_must_be_offered_by_the_source(self):
+        self._run(
+            _indicator(geo_level="county", crosswalk_from="metro"),
+            _source(geo_levels=["district"]),
+        )
+        self.assertTrue(any("crosswalk_from 'metro' not offered" in e for e in v.errors))
+
+    def test_crosswalk_equal_to_geo_level_is_redundant(self):
+        self._run(
+            _indicator(geo_level="county", crosswalk_from="county"),
+            _source(geo_levels=["county"]),
+        )
+        self.assertTrue(any("equals geo_level" in e for e in v.errors))
+
+    def test_valid_district_to_county_crosswalk_passes(self):
+        self._run(
+            _indicator(geo_level="county", crosswalk_from="district"),
+            _source(geo_levels=["district"]),
+        )
+        self.assertEqual(v.errors, [])
+
+
+class TestBandShoulders(unittest.TestCase):
+    def setUp(self):
+        _reset()
+
+    def test_asymmetric_shoulders_accepted(self):
+        v.check_curve(
+            _indicator(
+                curve="ideal_band",
+                curve_params={"lo": 1, "hi": 5, "shoulder": 2, "shoulder_lo": 0.5},
+            ),
+            "i1",
+        )
+        self.assertEqual(v.errors, [])
+
+    def test_negative_side_shoulder_rejected(self):
+        v.check_curve(
+            _indicator(
+                curve="ideal_band",
+                curve_params={"lo": 1, "hi": 5, "shoulder": 2, "shoulder_hi": -1},
+            ),
+            "i1",
+        )
+        self.assertTrue(any("shoulder_hi must be a positive number" in e for e in v.errors))
+
+
 class TestCurves(unittest.TestCase):
     """The band/point distinction is load-bearing — see docs/methodology.md section 3."""
 

@@ -39,11 +39,15 @@ sources:
 
   # --- safety ---
   - {id: fbi_cde,            name: FBI Crime Data Explorer,         url: "https://cde.ucr.cjis.gov",                              geo_levels: [county],         vintage: "2024",            license: PD}
+  - {id: cdc_wonder,        name: CDC WONDER mortality,            url: "https://wonder.cdc.gov/",                                geo_levels: [county],         vintage: "2023",            license: PD}
+  - {id: nhtsa_fars,        name: NHTSA FARS crash fatalities,     url: "https://www.nhtsa.gov/file-downloads",                   geo_levels: [county],         vintage: "2023",            license: PD}
 
   # --- education / family ---
   - {id: nces_ccd,           name: NCES Common Core of Data,        url: "https://nces.ed.gov/ccd/",                              geo_levels: [county, place],  vintage: "2024",            license: PD}
   - {id: urban_educationdata,name: Urban Institute Education Data,  url: "https://educationdata.urban.org",                       geo_levels: [county],         vintage: "2024",            license: "Free w/ attribution"}
   - {id: dol_childcare,      name: DOL Childcare Prices database,   url: "https://www.dol.gov/agencies/wb/topics/childcare/price-by-age-care-setting", geo_levels: [county], vintage: "2022", license: PD}
+  - {id: seda_stanford,     name: Stanford Education Data Archive, url: "https://edopportunity.org/get-the-data/",                 geo_levels: [district],       vintage: "v5.0",            license: "Free w/ citation"}
+  - {id: nces_edge,         name: NCES EDGE district relationship, url: "https://nces.ed.gov/programs/edge/",                      geo_levels: [district, county], vintage: "2024",          license: PD}
 
   # --- connectivity / amenities ---
   - {id: fcc_broadband,      name: FCC National Broadband Map,      url: "https://broadbandmap.fcc.gov",                          geo_levels: [county],         vintage: "2025",            license: PD}

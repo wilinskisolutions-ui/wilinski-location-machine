@@ -34,11 +34,22 @@ domains:
     scoring: true
     default_weight: 12
 
-  - id: family_services
-    label: Family and education
-    description: School quality and choice, childcare cost and availability, higher education.
+  # Split from the former `family_services` on 2026-08-22. Schools and childcare were
+  # sharing one weight, which made it impossible to say that one matters and the other
+  # does not. Independent weights restore that.
+  - id: education
+    label: Education
+    description: >
+      School quality measured by learning growth rather than raw achievement, district
+      choice, per-pupil spending, graduation rates, higher education access.
     scoring: true
-    default_weight: 10
+    default_weight: 6
+
+  - id: family_childcare
+    label: Family and childcare
+    description: Childcare cost and availability by age band.
+    scoring: true
+    default_weight: 4
 
   - id: health_care
     label: Health and healthcare

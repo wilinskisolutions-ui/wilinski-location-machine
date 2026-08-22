@@ -11,7 +11,8 @@ Two levels, scored together:
 
 - **County** (~3,143) — the primary unit. Most federal data lands natively at county
   level: hazard, health, climate, employment, income, childcare, elections.
-- **Place** (~5,000 incorporated places ≥5,000 population) — the sub-unit people actually
+- **Place** (~7,000-8,000 places ≥5,000 population, incorporated and census-designated)
+  — the sub-unit people actually
   live in. Carries local taxes, schools, density, walkability, and municipal character.
 
 Places join to counties by FIPS and to metros by CBSA code. A place inherits its county's
