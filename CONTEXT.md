@@ -5,8 +5,8 @@
 > is the project's working memory: a session that reads it should be able to resume cold
 > without re-deriving anything or re-asking a settled question.
 
-**Current phase:** Phase 0 — Charter · **Status:** complete, pending household review of
-the ten principles and twelve domains
+**Current phase:** Phase 0 — Charter · **Status:** complete, pushed to `main` at `751a3d7`
+**Blocking Phase 1:** household review of the ten principles and the twelve domains
 **Last updated:** 2026-08-22
 
 ---
@@ -86,25 +86,28 @@ used gendered pronouns that had never been stated. Removed. **Standing rule:** u
 household" and they/them until told otherwise. Recorded because it is exactly the kind of
 plausible-but-unsourced detail Principle 4 exists to catch.
 
-### 2026-08-22 — Phase 0 committed locally; push blocked by GitHub authorization
-Phase 0 is committed on `claude/relocation-matching-strategy-wz55sc` but **could not be
-pushed**. All three write paths return the same org-level denial, while read access works
-(`git ls-remote` succeeds; the repo is empty, zero branches):
+### 2026-08-22 — Phase 0 pushed to `main` (push blocker: RESOLVED)
+Phase 0 is on GitHub at `main`, commit `751a3d7`, 31 files.
 
-| Path | Result |
-|---|---|
-| `git push` | 403 — "Claude doesn't have GitHub access to this repo for your organization" |
-| GitHub MCP contents API | 403 — "Resource not accessible by integration" |
-| Re-attach with push access | `already_present` — no new credentials granted |
+**Branch decision:** pushed to `main` rather than a feature branch, on the household's
+explicit instruction. The repo was completely empty — no commits, no default branch — so
+the charter is the repo's starting point and `main` became default automatically. Future
+phases branch from it normally.
 
-**Remedy (either one):** an org admin installs the Claude GitHub App at
-`https://github.com/apps/claude/installations/select_target`, **or** the account owner
-reconnects GitHub at `https://claude.ai/customize/connectors?auth_start=github&auth_start_force=1`
-to re-link an existing installation.
+**The blocker, and why it is worth remembering.** The first push attempts were refused by
+the git proxy with *"Claude doesn't have GitHub access to this repo for your
+organization"*, while `list_repos` simultaneously reported `can_push: true` and
+`git ls-remote` succeeded. Those disagree because they are **two different identities**:
+the household's own GitHub account (which has write rights) and the Claude GitHub App (the
+automation identity, which did not). Read access working is not evidence that write access
+will. Access resolved on a later attempt without a settings change, so it was most likely
+a stale credential in the session rather than a missing installation.
 
-Until then the commit exists only in an ephemeral container. A git bundle was handed to the
-household so the full commit history can be restored with
-`git clone wlm-phase0.bundle` or `git pull wlm-phase0.bundle`.
+**If it recurs:** confirm which identity is failing before changing anything. A 403 that
+survives a fresh session means the Claude GitHub App needs installing for this repo at
+`https://github.com/apps/claude/installations/select_target`, or the connector needs
+re-linking at `https://claude.ai/customize/connectors?auth_start=github&auth_start_force=1`.
+A repeated 403 is a policy denial, never a transient — do not retry it in a loop.
 
 ---
 
@@ -157,9 +160,6 @@ cases are covered by `make test` (24 tests).
 
 ## Next actions
 
-0. **Restore Phase 0 into the repo.** Grant GitHub write access (see the 2026-08-22
-   decision above), then push the branch — or restore from the `wlm-phase0.bundle` handed
-   over. Everything else is blocked on the work being somewhere durable.
 1. **Household reviews the ten principles in `GOAL.md` and the twelve domains in
    `config/domains.yaml`.** These are the two things most expensive to change later; Phase 1
    should not start until both are confirmed.
