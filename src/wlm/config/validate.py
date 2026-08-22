@@ -1,0 +1,242 @@
+"""Validate the configuration registries.
+
+Run:  python -m wlm.config.validate   (or: make validate)
+
+Checks the invariants that GOAL.md states as principles, so a violation is caught
+mechanically rather than by someone remembering. Exits non-zero on any error.
+
+Deliberately stdlib-only apart from PyYAML: the validator must run anywhere, with no
+install step, in a project whose whole premise is reproducibility.
+"""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+from urllib.parse import urlparse
+
+import yaml
+
+ROOT = Path(__file__).resolve().parents[3]
+CONFIG = ROOT / "config"
+DOCS = ROOT / "docs"
+
+GEO_LEVELS = {"county", "place", "metro", "state"}
+CURVES = {"higher_better", "lower_better", "ideal_band", "ideal_point"}
+TRANSFORMS = {"none", "log", "sqrt", "per_capita"}
+MONOTONE = {"higher_better", "lower_better"}
+
+errors: list[str] = []
+warnings: list[str] = []
+notes: list[str] = []
+
+
+def err(msg: str) -> None:
+    errors.append(msg)
+
+
+def warn(msg: str) -> None:
+    warnings.append(msg)
+
+
+def load(name: str, key: str) -> list[dict]:
+    path = CONFIG / name
+    if not path.exists():
+        err(f"{name}: missing")
+        return []
+    data = yaml.safe_load(path.read_text()) or {}
+    items = data.get(key)
+    if not isinstance(items, list):
+        err(f"{name}: expected a top-level '{key}:' list")
+        return []
+    return items
+
+
+def dupes(items: list[dict], label: str) -> None:
+    seen: set[str] = set()
+    for it in items:
+        i = it.get("id")
+        if not i:
+            err(f"{label}: entry with no id: {it!r:.80}")
+        elif i in seen:
+            err(f"{label}: duplicate id '{i}'")
+        else:
+            seen.add(i)
+
+
+def check_domains(domains: list[dict]) -> None:
+    dupes(domains, "domains")
+    scoring_total = 0.0
+    for d in domains:
+        did, w = d.get("id"), d.get("default_weight")
+        if not isinstance(w, (int, float)):
+            err(f"domain '{did}': default_weight must be a number")
+            continue
+        if w < 0:
+            err(f"domain '{did}': default_weight is negative")
+        if d.get("scoring"):
+            scoring_total += w
+        elif w != 0:
+            err(f"domain '{did}': non-scoring domains must have default_weight 0, got {w}")
+        # Principle 10 — sensitive dimensions ship at weight zero.
+        if d.get("sensitive") and w != 0:
+            err(
+                f"domain '{did}': PRINCIPLE 10 VIOLATION — sensitive domain has "
+                f"default_weight {w}, must be 0 until explicitly opted in"
+            )
+    if abs(scoring_total - 100.0) > 1e-6:
+        err(f"scoring domain default_weights sum to {scoring_total}, expected 100")
+
+
+def check_sources(sources: list[dict]) -> None:
+    dupes(sources, "sources")
+    catalog = (DOCS / "data-sources.md").read_text() if (DOCS / "data-sources.md").exists() else ""
+    if not catalog:
+        err("docs/data-sources.md: missing — every source needs a narrative entry")
+    for s in sources:
+        sid = s.get("id")
+        for field in ("name", "url", "geo_levels", "vintage", "license"):
+            if not s.get(field):
+                err(f"source '{sid}': missing required field '{field}'")
+        url = s.get("url", "")
+        if not url.startswith("https://"):
+            err(f"source '{sid}': url must be https, got '{url}'")
+        bad = set(s.get("geo_levels") or []) - GEO_LEVELS
+        if bad:
+            err(f"source '{sid}': unknown geo_levels {sorted(bad)}")
+        # Cross-doc drift: the machine registry and the narrative catalog must agree.
+        host = urlparse(url).netloc.removeprefix("www.")
+        if catalog and host and host not in catalog:
+            err(f"source '{sid}': host '{host}' absent from docs/data-sources.md")
+
+
+def check_indicators(indicators: list[dict], domains: list[dict], sources: list[dict]) -> None:
+    dupes(indicators, "indicators")
+    dmap = {d["id"]: d for d in domains if d.get("id")}
+    smap = {s["id"]: s for s in sources if s.get("id")}
+    used_domains: set[str] = set()
+    n_provisional = 0
+
+    for ind in indicators:
+        iid = ind.get("id")
+        dom, src = ind.get("domain"), ind.get("source")
+
+        if dom not in dmap:
+            err(f"indicator '{iid}': unknown domain '{dom}'")
+        elif not dmap[dom].get("scoring"):
+            err(f"indicator '{iid}': domain '{dom}' is non-scoring and cannot hold indicators")
+        else:
+            used_domains.add(dom)
+
+        if src not in smap:
+            err(f"indicator '{iid}': unknown source '{src}' (not in config/sources.yaml)")
+
+        geo = ind.get("geo_level")
+        if geo not in GEO_LEVELS:
+            err(f"indicator '{iid}': geo_level '{geo}' not in {sorted(GEO_LEVELS)}")
+        elif src in smap and geo not in (smap[src].get("geo_levels") or []):
+            err(
+                f"indicator '{iid}': geo_level '{geo}' not offered by source '{src}' "
+                f"(offers {smap[src].get('geo_levels')})"
+            )
+
+        tr = ind.get("transform", "none")
+        if tr not in TRANSFORMS:
+            err(f"indicator '{iid}': transform '{tr}' not in {sorted(TRANSFORMS)}")
+
+        if not ind.get("unit"):
+            err(f"indicator '{iid}': missing 'unit' — raw-value curves are unit-dependent")
+
+        # Principle 10, both directions: the sensitive flag and the sensitive domain
+        # must agree, so nothing sensitive can hide in a weighted domain.
+        in_sensitive_domain = bool(dmap.get(dom, {}).get("sensitive"))
+        flagged = bool(ind.get("sensitive"))
+        if in_sensitive_domain and not flagged:
+            err(f"indicator '{iid}': in sensitive domain but not flagged 'sensitive: true'")
+        if flagged and not in_sensitive_domain:
+            err(f"indicator '{iid}': flagged sensitive but domain '{dom}' is not a sensitive domain")
+
+        if ind.get("provisional"):
+            n_provisional += 1
+
+        check_curve(ind, iid)
+
+    for did, d in dmap.items():
+        if d.get("scoring") and did not in used_domains:
+            err(f"domain '{did}': scoring domain has no indicators")
+
+    unused = sorted(set(smap) - {i.get("source") for i in indicators})
+    if unused:
+        notes.append(f"{len(unused)} source(s) registered but not yet used by a seed indicator: {', '.join(unused)}")
+    if n_provisional:
+        notes.append(f"{n_provisional} indicator(s) carry provisional curve params awaiting Phase 3 elicitation")
+
+
+def check_curve(ind: dict, iid: str) -> None:
+    curve = ind.get("curve")
+    params = ind.get("curve_params") or {}
+
+    if curve not in CURVES:
+        err(f"indicator '{iid}': curve '{curve}' not in {sorted(CURVES)}")
+        return
+
+    if curve in MONOTONE:
+        if params:
+            err(f"indicator '{iid}': curve '{curve}' operates on percentiles and takes no curve_params")
+        return
+
+    # Non-monotone curves act on RAW values and are meaningless without params.
+    if curve == "ideal_band":
+        lo, hi = params.get("lo"), params.get("hi")
+        if not isinstance(lo, (int, float)) or not isinstance(hi, (int, float)):
+            err(f"indicator '{iid}': ideal_band requires numeric 'lo' and 'hi'")
+        elif lo >= hi:
+            err(f"indicator '{iid}': ideal_band needs lo < hi, got lo={lo} hi={hi}")
+        sh = params.get("shoulder")
+        if sh is None:
+            err(f"indicator '{iid}': ideal_band requires 'shoulder' (decay width outside the band)")
+        elif not isinstance(sh, (int, float)) or sh <= 0:
+            err(f"indicator '{iid}': ideal_band shoulder must be a positive number, got {sh!r}")
+
+    elif curve == "ideal_point":
+        if not isinstance(params.get("target"), (int, float)):
+            err(f"indicator '{iid}': ideal_point requires a numeric 'target'")
+        tol = params.get("tol")
+        if not isinstance(tol, (int, float)) or tol <= 0:
+            err(f"indicator '{iid}': ideal_point requires a positive 'tol', got {tol!r}")
+
+
+def main() -> int:
+    domains = load("domains.yaml", "domains")
+    sources = load("sources.yaml", "sources")
+    indicators = load("indicators.yaml", "indicators")
+
+    if domains:
+        check_domains(domains)
+    if sources:
+        check_sources(sources)
+    if indicators and domains and sources:
+        check_indicators(indicators, domains, sources)
+
+    scoring = [d for d in domains if d.get("scoring")]
+    print(f"domains     {len(domains):>4}  ({len(scoring)} scoring, {len(domains) - len(scoring)} questionnaire-only)")
+    print(f"sources     {len(sources):>4}")
+    print(f"indicators  {len(indicators):>4}")
+
+    for n in notes:
+        print(f"\n  note: {n}")
+    for w in warnings:
+        print(f"\n  warning: {w}")
+
+    if errors:
+        print(f"\nFAILED — {len(errors)} error(s):")
+        for e in errors:
+            print(f"  - {e}")
+        return 1
+
+    print("\nOK — all registries valid.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

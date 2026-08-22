@@ -1,0 +1,25 @@
+[project]
+name = "wlm"
+version = "0.1.0"
+description = "Wilinski Location Machine - evidence-weighted US relocation matching"
+requires-python = ">=3.11"
+
+# Phase 0 deliberately depends on PyYAML alone: the config validator must run anywhere
+# with no install step. Analysis dependencies arrive with the Phase 1 pipeline.
+dependencies = ["pyyaml>=6.0"]
+
+[project.optional-dependencies]
+pipeline = [
+  "duckdb>=1.0",
+  "polars>=1.0",
+  "pyarrow>=16.0",
+  "requests>=2.31",
+  "jinja2>=3.1",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

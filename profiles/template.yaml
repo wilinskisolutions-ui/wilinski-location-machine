@@ -1,0 +1,29 @@
+# Preference profile template. Copy to <name>.yaml, one per partner (Principle 8).
+# Populated by the Phase 3 questionnaire, not by hand.
+
+person: template
+elicited_on: null            # date the questionnaire session completed
+method: null                 # budget_alloc + pairwise + maxdiff
+
+# Must name every scoring domain in config/domains.yaml and sum to 100.
+domain_weights: {}
+  # cost_housing: 0
+  # climate_environment: 0
+  # ...
+
+# Overrides for indicator curve params where the household's answer differs from the
+# provisional default in config/indicators.yaml.
+curve_overrides: {}
+  # form_population:
+  #   curve: ideal_band
+  #   curve_params: {lo: 40000, hi: 180000, shoulder: 40000}
+
+# Hard filters. Applied as a mask after scoring so the eliminated set stays inspectable,
+# and each one reports how many places it removed (docs/methodology.md section 5).
+knockouts: []
+  # - {indicator: hazard_nri_hurricane, op: percentile_below, value: 0.90}
+
+# Sensitive dimensions stay at weight 0 until explicitly listed here (Principle 10).
+sensitive_opt_in: []
+
+notes: ""

@@ -1,0 +1,22 @@
+# Downloaded source data - regenerable from MANIFEST.json, too large for git.
+# MANIFEST.json itself IS tracked: it is the provenance record (Principle 3).
+data/raw/*
+!data/raw/.gitkeep
+!data/raw/MANIFEST.json
+
+data/interim/*
+!data/interim/.gitkeep
+
+# Processed outputs are tracked once stable - see CONTEXT.md before committing large files.
+data/processed/*
+!data/processed/.gitkeep
+
+output/*
+!output/.gitkeep
+
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.DS_Store

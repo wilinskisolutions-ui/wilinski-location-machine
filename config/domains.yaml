@@ -1,0 +1,95 @@
+# Scoring domains.
+#
+# `default_weight` values are PROVISIONAL placeholders so the pipeline is runnable before
+# the questionnaire exists. They are replaced wholesale by elicited weights in Phase 3 and
+# carry no judgement about what matters (Principle 7 — real weights come from forced
+# trade-offs, never from a default someone typed).
+#
+# Non-scoring domains carry no indicators and no weight. They exist because the
+# questionnaire needs somewhere to put questions that produce knockouts and facts rather
+# than scores.
+
+domains:
+  - id: cost_housing
+    label: Cost of living and housing
+    description: Purchase prices, rents, price parity, property and income tax burden, utilities.
+    scoring: true
+    default_weight: 18
+
+  - id: climate_environment
+    label: Climate, environment and hazard
+    description: Temperature, precipitation, snow, humidity, sunshine, air quality, natural hazard risk, terrain.
+    scoring: true
+    default_weight: 14
+
+  - id: urban_form
+    label: Urban form and connectivity
+    description: Density, walkability, transit, commute time, airport access, distance to a major city.
+    scoring: true
+    default_weight: 12
+
+  - id: career_economy
+    label: Career and economy
+    description: Job market depth, wage levels, industry mix, unemployment, economic resilience if a job is lost.
+    scoring: true
+    default_weight: 12
+
+  - id: family_services
+    label: Family and education
+    description: School quality and choice, childcare cost and availability, higher education.
+    scoring: true
+    default_weight: 10
+
+  - id: health_care
+    label: Health and healthcare
+    description: Population health outcomes, provider availability, hospital quality, shortage areas.
+    scoring: true
+    default_weight: 10
+
+  - id: safety
+    label: Safety
+    description: Violent and property crime rates. Coverage is uneven — see docs/data-sources.md.
+    scoring: true
+    default_weight: 10
+
+  - id: recreation_lifestyle
+    label: Recreation and lifestyle
+    description: Outdoor access, parks and trails, amenity density, food and culture, third places.
+    scoring: true
+    default_weight: 8
+
+  - id: community_culture
+    label: Community and social fabric
+    description: Age structure, transience vs. rootedness, social capital, diversity, household composition.
+    scoring: true
+    default_weight: 6
+
+  # Ingested in full, visible in every place profile, contributes nothing to any score
+  # until explicitly enabled. See GOAL.md Principle 10 and the 2026-08-22 decision.
+  - id: sensitive
+    label: Sensitive dimensions (opt-in)
+    description: >
+      Political climate, religious adherence, demographic composition, state social policy.
+      Stored as direction-neutral raw indicators — the household's preference curve decides
+      whether high, low, or a band scores well. The registry assumes no direction.
+    scoring: true
+    default_weight: 0
+    sensitive: true
+
+  # --- Non-scoring: questionnaire structure only ---
+
+  - id: household_constraints
+    label: Household and constraints
+    description: >
+      Who the household is, work situation, budget, timeline, children, pets, current
+      residence. Produces knockout filters and recorded facts, not scores.
+    scoring: false
+    default_weight: 0
+
+  - id: meta
+    label: Meta and calibration
+    description: >
+      Deal-breakers, forced trade-off exercises, the ten-year test, the calibration set of
+      20 known places. Produces weights and validation data, not scores.
+    scoring: false
+    default_weight: 0

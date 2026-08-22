@@ -1,0 +1,63 @@
+# Machine-readable source registry. The narrative catalog with per-source caveats lives in
+# docs/data-sources.md; every id here must appear there, and the validator checks it.
+# `vintage` is the TARGET release — the actual one is pinned at ingest in
+# data/raw/MANIFEST.json with a SHA-256 (GOAL.md Principle 3).
+
+sources:
+  # --- geography / universe ---
+  - {id: census_gazetteer,   name: Census Gazetteer files,          url: "https://www.census.gov/geographies/reference-files/time-series/geo/gazetteer-files.html", geo_levels: [county, place], vintage: "2024",           license: PD}
+  - {id: census_tiger,       name: Census TIGER/Line,               url: "https://www2.census.gov/geo/tiger/",                    geo_levels: [county, place],  vintage: "2024",            license: PD}
+  - {id: census_cbsa,        name: CBSA delineation files,          url: "https://www.census.gov/geographies/reference-files/time-series/demo/metro-micro/delineation-files.html", geo_levels: [metro], vintage: "2023", license: PD}
+
+  # --- demographics / housing ---
+  - {id: census_acs5,        name: ACS 5-year estimates,            url: "https://api.census.gov/data/2024/acs/acs5",             geo_levels: [county, place],  vintage: "2020-2024",       license: PD}
+  - {id: census_bps,         name: Census Building Permits Survey,  url: "https://www.census.gov/construction/bps/",              geo_levels: [county, metro],  vintage: "2024",            license: PD}
+
+  # --- cost of living ---
+  - {id: bea_rpp,            name: BEA Regional Price Parities,     url: "https://apps.bea.gov/regional/downloadzip.htm",         geo_levels: [metro, state],   vintage: "2023",            license: PD}
+  - {id: bea_income,         name: BEA per-capita personal income,  url: "https://apps.bea.gov/regional/downloadzip.htm",         geo_levels: [county],         vintage: "2023",            license: PD}
+  - {id: mit_livingwage,     name: MIT Living Wage Calculator,      url: "https://livingwage.mit.edu/",                           geo_levels: [county],         vintage: "2025",            license: "Free w/ attribution"}
+  - {id: hud_fmr,            name: HUD Fair Market Rents,           url: "https://www.huduser.gov/portal/datasets/fmr.html",      geo_levels: [county],         vintage: "FY2026",          license: PD}
+  - {id: zillow_research,    name: Zillow ZHVI / ZORI,              url: "https://www.zillow.com/research/data/",                 geo_levels: [metro, place],   vintage: "2026-monthly",    license: "Free, non-commercial, attribution"}
+  - {id: fhfa_hpi,           name: FHFA House Price Index,          url: "https://www.fhfa.gov/data/hpi",                         geo_levels: [metro, county],  vintage: "2026-quarterly",  license: PD}
+
+  # --- jobs / economy ---
+  - {id: bls_qcew,           name: BLS QCEW,                        url: "https://www.bls.gov/cew/downloadable-data-files.htm",   geo_levels: [county],         vintage: "2024",            license: PD}
+  - {id: bls_laus,           name: BLS LAUS,                        url: "https://www.bls.gov/lau/",                              geo_levels: [county, metro],  vintage: "2026-monthly",    license: PD}
+  - {id: bls_oes,            name: BLS OES occupational wages,      url: "https://www.bls.gov/oes/tables.htm",                    geo_levels: [metro],          vintage: "2024",            license: PD}
+
+  # --- climate / environment ---
+  - {id: noaa_normals,       name: NOAA NCEI US Climate Normals,    url: "https://www.ncei.noaa.gov/products/land-based-station/us-climate-normals", geo_levels: [county], vintage: "1991-2020", license: PD}
+  - {id: fema_nri,           name: FEMA National Risk Index,        url: "https://hazards.fema.gov/nri/data-resources",           geo_levels: [county],         vintage: "2023",            license: PD}
+  - {id: epa_aqs,            name: EPA AQS annual summaries,        url: "https://aqs.epa.gov/aqsweb/airdata/download_files.html",geo_levels: [county],         vintage: "2024",            license: PD}
+  - {id: usda_amenities,     name: USDA ERS Natural Amenities Scale,url: "https://www.ers.usda.gov/data-products/natural-amenities-scale", geo_levels: [county], vintage: "1999",            license: PD}
+
+  # --- health ---
+  - {id: chr_rwjf,           name: County Health Rankings,          url: "https://www.countyhealthrankings.org/health-data",      geo_levels: [county],         vintage: "2025",            license: "Free w/ citation"}
+  - {id: hrsa_hpsa,          name: HRSA shortage areas,             url: "https://data.hrsa.gov",                                 geo_levels: [county],         vintage: "2026",            license: PD}
+  - {id: cms_hospital,       name: CMS hospital quality,            url: "https://data.cms.gov/provider-data/",                   geo_levels: [county],         vintage: "2025",            license: PD}
+
+  # --- safety ---
+  - {id: fbi_cde,            name: FBI Crime Data Explorer,         url: "https://cde.ucr.cjis.gov",                              geo_levels: [county],         vintage: "2024",            license: PD}
+
+  # --- education / family ---
+  - {id: nces_ccd,           name: NCES Common Core of Data,        url: "https://nces.ed.gov/ccd/",                              geo_levels: [county, place],  vintage: "2024",            license: PD}
+  - {id: urban_educationdata,name: Urban Institute Education Data,  url: "https://educationdata.urban.org",                       geo_levels: [county],         vintage: "2024",            license: "Free w/ attribution"}
+  - {id: dol_childcare,      name: DOL Childcare Prices database,   url: "https://www.dol.gov/agencies/wb/topics/childcare/price-by-age-care-setting", geo_levels: [county], vintage: "2022", license: PD}
+
+  # --- connectivity / amenities ---
+  - {id: fcc_broadband,      name: FCC National Broadband Map,      url: "https://broadbandmap.fcc.gov",                          geo_levels: [county],         vintage: "2025",            license: PD}
+  - {id: bts_t100,           name: BTS airport and flight data,     url: "https://www.transtats.bts.gov",                         geo_levels: [metro],          vintage: "2025",            license: PD}
+  - {id: fta_ntd,            name: FTA National Transit Database,   url: "https://www.transit.dot.gov/ntd",                       geo_levels: [metro],          vintage: "2024",            license: PD}
+  - {id: osm_overpass,       name: OpenStreetMap via Overpass,      url: "https://overpass-api.de",                               geo_levels: [place, county],  vintage: "live",            license: "ODbL, attribution required"}
+
+  # --- taxes / utilities ---
+  - {id: taxfoundation,      name: Tax Foundation state tables,     url: "https://taxfoundation.org/data/",                       geo_levels: [state],          vintage: "2026",            license: "CC BY-NC"}
+  - {id: eia_electricity,    name: EIA electricity prices,          url: "https://www.eia.gov/electricity/data.php",              geo_levels: [state],          vintage: "2026",            license: PD}
+
+  # --- sensitive (weight 0 by default) ---
+  - {id: medsl_elections,    name: MIT Election Lab county returns, url: "https://dataverse.harvard.edu",                          geo_levels: [county],         vintage: "2000-2024",       license: CC0}
+  - {id: arda_religion,      name: ARDA US Religion Census,         url: "https://www.thearda.com",                               geo_levels: [county],         vintage: "2020",            license: "Free w/ registration + citation"}
+
+  # --- hype index (diagnostic only, never an input) ---
+  - {id: irs_migration,      name: IRS SOI migration data,          url: "https://www.irs.gov/statistics/soi-tax-stats-migration-data", geo_levels: [county],    vintage: "2023",            license: PD}

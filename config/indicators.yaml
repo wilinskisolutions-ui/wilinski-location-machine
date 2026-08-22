@@ -1,0 +1,399 @@
+# Indicator registry — the single source of truth for scoring.
+# Nothing is scored that is not registered here (docs/methodology.md §2).
+#
+# curve:  higher_better | lower_better  -> applied to the NATIONAL PERCENTILE of the value
+#         ideal_band | ideal_point      -> applied to the RAW value, in the unit given
+#         (this distinction is load-bearing; see docs/methodology.md §3)
+#
+# provisional: true  -> curve params are placeholders awaiting the Phase 3 questionnaire.
+#         The pipeline runs with them; the household replaces them. Flagged so no one
+#         mistakes a typed-in default for an elicited preference (Principle 7).
+#
+# This is a SEED set proving the schema end to end across all ten scoring domains.
+# Phase 2 expands it to 40-60 indicators.
+
+indicators:
+
+  # ---------------- cost_housing ----------------
+  - id: cost_home_value_median
+    domain: cost_housing
+    label: Median home value (Zillow ZHVI)
+    source: zillow_research
+    geo_level: place
+    curve: lower_better
+    unit: USD
+
+  - id: cost_rent_median
+    domain: cost_housing
+    label: Median rent (HUD Fair Market Rent, 2BR)
+    source: hud_fmr
+    geo_level: county
+    curve: lower_better
+    unit: USD/month
+
+  - id: cost_price_parity
+    domain: cost_housing
+    label: Regional price parity, all items
+    source: bea_rpp
+    geo_level: metro
+    curve: lower_better
+    unit: index
+
+  - id: cost_property_tax_rate
+    domain: cost_housing
+    label: Median property tax as share of home value
+    source: census_acs5
+    geo_level: county
+    curve: lower_better
+    unit: ratio
+
+  - id: cost_electricity_price
+    domain: cost_housing
+    label: Average residential electricity price
+    source: eia_electricity
+    geo_level: state
+    curve: lower_better
+    unit: cents/kWh
+
+  - id: cost_income_to_home_ratio
+    domain: cost_housing
+    label: Median home value divided by median household income
+    source: census_acs5
+    geo_level: place
+    curve: lower_better
+    unit: ratio
+    notes: Affordability relative to local wages, not absolute price.
+
+  # ---------------- climate_environment ----------------
+  - id: climate_temp_july_mean
+    domain: climate_environment
+    label: Mean July temperature
+    source: noaa_normals
+    geo_level: county
+    curve: ideal_band
+    curve_params: {lo: 68, hi: 80, shoulder: 8}
+    unit: degF
+    provisional: true
+
+  - id: climate_temp_january_mean
+    domain: climate_environment
+    label: Mean January temperature
+    source: noaa_normals
+    geo_level: county
+    curve: ideal_band
+    curve_params: {lo: 28, hi: 48, shoulder: 10}
+    unit: degF
+    provisional: true
+
+  - id: climate_annual_precip
+    domain: climate_environment
+    label: Annual precipitation
+    source: noaa_normals
+    geo_level: county
+    curve: ideal_band
+    curve_params: {lo: 25, hi: 45, shoulder: 12}
+    unit: inches
+    provisional: true
+
+  - id: climate_annual_snowfall
+    domain: climate_environment
+    label: Annual snowfall
+    source: noaa_normals
+    geo_level: county
+    curve: ideal_point
+    curve_params: {target: 12, tol: 20}
+    unit: inches
+    provisional: true
+
+  - id: hazard_nri_composite
+    domain: climate_environment
+    label: FEMA National Risk Index composite
+    source: fema_nri
+    geo_level: county
+    curve: lower_better
+    unit: score
+    notes: 18 hazards as expected annual loss. Decisive for the Florida/Texas question.
+
+  - id: hazard_nri_hurricane
+    domain: climate_environment
+    label: FEMA NRI hurricane risk
+    source: fema_nri
+    geo_level: county
+    curve: lower_better
+    unit: score
+
+  - id: hazard_nri_wildfire
+    domain: climate_environment
+    label: FEMA NRI wildfire risk
+    source: fema_nri
+    geo_level: county
+    curve: lower_better
+    unit: score
+
+  - id: env_pm25_annual
+    domain: climate_environment
+    label: Annual mean PM2.5
+    source: epa_aqs
+    geo_level: county
+    curve: lower_better
+    unit: ug/m3
+
+  - id: env_natural_amenities
+    domain: climate_environment
+    label: USDA natural amenities scale
+    source: usda_amenities
+    geo_level: county
+    curve: higher_better
+    unit: index
+    notes: 1999 vintage but structural — terrain and water area, not time-varying.
+
+  # ---------------- urban_form ----------------
+  - id: form_population
+    domain: urban_form
+    label: Place population
+    source: census_gazetteer
+    geo_level: place
+    curve: ideal_band
+    curve_params: {lo: 25000, hi: 250000, shoulder: 50000}
+    unit: people
+    provisional: true
+    notes: The canonical band case — a z-score would rank a 4M-person county above the ideal town.
+
+  - id: form_population_density
+    domain: urban_form
+    label: Population per square mile
+    source: census_gazetteer
+    geo_level: place
+    curve: ideal_band
+    curve_params: {lo: 1500, hi: 6000, shoulder: 2000}
+    unit: people/sqmi
+    transform: log
+    provisional: true
+
+  - id: form_mean_commute
+    domain: urban_form
+    label: Mean travel time to work
+    source: census_acs5
+    geo_level: place
+    curve: lower_better
+    unit: minutes
+
+  - id: form_transit_ridership_pc
+    domain: urban_form
+    label: Transit trips per capita
+    source: fta_ntd
+    geo_level: metro
+    curve: higher_better
+    unit: trips/person/year
+
+  - id: form_airport_destinations
+    domain: urban_form
+    label: Nonstop destinations from nearest major airport
+    source: bts_t100
+    geo_level: metro
+    curve: higher_better
+    unit: count
+
+  - id: form_broadband_gigabit
+    domain: urban_form
+    label: Share of households with gigabit service available
+    source: fcc_broadband
+    geo_level: county
+    curve: higher_better
+    unit: share
+
+  # ---------------- career_economy ----------------
+  - id: econ_unemployment_rate
+    domain: career_economy
+    label: Unemployment rate
+    source: bls_laus
+    geo_level: county
+    curve: lower_better
+    unit: percent
+
+  - id: econ_median_wage
+    domain: career_economy
+    label: Median annual wage, all occupations
+    source: bls_oes
+    geo_level: metro
+    curve: higher_better
+    unit: USD
+
+  - id: econ_industry_diversity
+    domain: career_economy
+    label: Industry diversity (inverse Herfindahl of employment by sector)
+    source: bls_qcew
+    geo_level: county
+    curve: higher_better
+    unit: index
+    notes: Proxy for resilience — how exposed the place is if one sector contracts.
+
+  - id: econ_employment_growth_5y
+    domain: career_economy
+    label: Five-year employment growth
+    source: bls_qcew
+    geo_level: county
+    curve: higher_better
+    unit: percent
+
+  # ---------------- family_services ----------------
+  - id: family_childcare_cost_infant
+    domain: family_services
+    label: Median infant center-based childcare price
+    source: dol_childcare
+    geo_level: county
+    curve: lower_better
+    unit: USD/year
+
+  - id: family_school_spend_per_pupil
+    domain: family_services
+    label: Current expenditure per pupil
+    source: urban_educationdata
+    geo_level: county
+    curve: higher_better
+    unit: USD
+
+  - id: family_student_teacher_ratio
+    domain: family_services
+    label: Student-teacher ratio
+    source: nces_ccd
+    geo_level: county
+    curve: lower_better
+    unit: ratio
+
+  # ---------------- health_care ----------------
+  - id: health_life_expectancy
+    domain: health_care
+    label: Life expectancy at birth
+    source: chr_rwjf
+    geo_level: county
+    curve: higher_better
+    unit: years
+
+  - id: health_pcp_ratio
+    domain: health_care
+    label: Population per primary care physician
+    source: chr_rwjf
+    geo_level: county
+    curve: lower_better
+    unit: ratio
+
+  - id: health_hpsa_shortage
+    domain: health_care
+    label: Designated health professional shortage area
+    source: hrsa_hpsa
+    geo_level: county
+    curve: lower_better
+    unit: score
+
+  # ---------------- safety ----------------
+  - id: safety_violent_crime_rate
+    domain: safety
+    label: Violent crime per 100,000
+    source: fbi_cde
+    geo_level: county
+    curve: lower_better
+    unit: per100k
+    notes: Agency reporting is voluntary — coverage gaps are flagged, never imputed (Principle 6).
+
+  - id: safety_property_crime_rate
+    domain: safety
+    label: Property crime per 100,000
+    source: fbi_cde
+    geo_level: county
+    curve: lower_better
+    unit: per100k
+
+  # ---------------- recreation_lifestyle ----------------
+  - id: rec_park_access
+    domain: recreation_lifestyle
+    label: Share of population with park access
+    source: chr_rwjf
+    geo_level: county
+    curve: higher_better
+    unit: share
+
+  - id: rec_amenity_density
+    domain: recreation_lifestyle
+    label: Everyday amenities per 10,000 residents
+    source: osm_overpass
+    geo_level: place
+    curve: higher_better
+    unit: per10k
+    notes: >
+      Groceries, gyms, libraries, cafes, trailheads, clinics. OSM covers small places as
+      thoroughly as large ones, making this a direct countermeasure to coverage bias.
+
+  - id: rec_trail_km_per_capita
+    domain: recreation_lifestyle
+    label: Mapped trail kilometres per capita
+    source: osm_overpass
+    geo_level: county
+    curve: higher_better
+    unit: km/1000
+
+  # ---------------- community_culture ----------------
+  - id: comm_median_age
+    domain: community_culture
+    label: Median age
+    source: census_acs5
+    geo_level: place
+    curve: ideal_band
+    curve_params: {lo: 32, hi: 44, shoulder: 8}
+    unit: years
+    provisional: true
+
+  - id: comm_same_house_1yr
+    domain: community_culture
+    label: Share in the same house one year ago
+    source: census_acs5
+    geo_level: place
+    curve: higher_better
+    unit: share
+    notes: Rootedness vs. transience. Direction is provisional — some households want churn.
+    provisional: true
+
+  - id: comm_social_associations
+    domain: community_culture
+    label: Membership associations per 10,000
+    source: chr_rwjf
+    geo_level: county
+    curve: higher_better
+    unit: per10k
+
+  # ---------------- sensitive (weight 0 until opted in) ----------------
+  - id: sens_partisan_lean
+    domain: sensitive
+    label: Two-party presidential vote margin, most recent cycle
+    source: medsl_elections
+    geo_level: county
+    curve: ideal_point
+    curve_params: {target: 0, tol: 100}
+    unit: margin_pct
+    sensitive: true
+    provisional: true
+    notes: >
+      Direction-neutral by design. Stored as a signed margin; the household's own curve
+      decides whether high, low, or balanced scores well. The registry assumes nothing.
+
+  - id: sens_religious_adherence
+    domain: sensitive
+    label: Religious adherents as share of population
+    source: arda_religion
+    geo_level: county
+    curve: ideal_point
+    curve_params: {target: 0.5, tol: 1.0}
+    unit: share
+    sensitive: true
+    provisional: true
+
+  - id: sens_foreign_born_share
+    domain: sensitive
+    label: Foreign-born share of population
+    source: census_acs5
+    geo_level: place
+    curve: ideal_point
+    curve_params: {target: 0.10, tol: 1.0}
+    unit: share
+    sensitive: true
+    provisional: true
