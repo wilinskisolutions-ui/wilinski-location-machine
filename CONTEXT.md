@@ -86,6 +86,26 @@ used gendered pronouns that had never been stated. Removed. **Standing rule:** u
 household" and they/them until told otherwise. Recorded because it is exactly the kind of
 plausible-but-unsourced detail Principle 4 exists to catch.
 
+### 2026-08-22 — Phase 0 committed locally; push blocked by GitHub authorization
+Phase 0 is committed on `claude/relocation-matching-strategy-wz55sc` but **could not be
+pushed**. All three write paths return the same org-level denial, while read access works
+(`git ls-remote` succeeds; the repo is empty, zero branches):
+
+| Path | Result |
+|---|---|
+| `git push` | 403 — "Claude doesn't have GitHub access to this repo for your organization" |
+| GitHub MCP contents API | 403 — "Resource not accessible by integration" |
+| Re-attach with push access | `already_present` — no new credentials granted |
+
+**Remedy (either one):** an org admin installs the Claude GitHub App at
+`https://github.com/apps/claude/installations/select_target`, **or** the account owner
+reconnects GitHub at `https://claude.ai/customize/connectors?auth_start=github&auth_start_force=1`
+to re-link an existing installation.
+
+Until then the commit exists only in an ephemeral container. A git bundle was handed to the
+household so the full commit history can be restored with
+`git clone wlm-phase0.bundle` or `git pull wlm-phase0.bundle`.
+
 ---
 
 ## Data inventory
@@ -137,6 +157,9 @@ cases are covered by `make test` (24 tests).
 
 ## Next actions
 
+0. **Restore Phase 0 into the repo.** Grant GitHub write access (see the 2026-08-22
+   decision above), then push the branch — or restore from the `wlm-phase0.bundle` handed
+   over. Everything else is blocked on the work being somewhere durable.
 1. **Household reviews the ten principles in `GOAL.md` and the twelve domains in
    `config/domains.yaml`.** These are the two things most expensive to change later; Phase 1
    should not start until both are confirmed.
