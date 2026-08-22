@@ -80,7 +80,7 @@ class TestFeatureBuild(unittest.TestCase):
         )
         frames = [
             census_acs.ingest([FIXTURES / "acs_population_places.json"], vintage="2020-2024"),
-            fema_nri.ingest(FIXTURES / "fema_nri_counties.csv"),
+            fema_nri.ingest(FIXTURES / "fema_nri_counties.json"),
             usda_amenities.ingest(FIXTURES / "usda_natural_amenities.csv"),
         ]
         cls.features, cls.coverage, cls.report = build_features(

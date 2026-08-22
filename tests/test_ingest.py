@@ -77,13 +77,27 @@ class TestCensusACS(unittest.TestCase):
 class TestFemaNri(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.df = fema_nri.ingest(FIXTURES / "fema_nri_counties.csv")
+        cls.df = fema_nri.ingest(FIXTURES / "fema_nri_counties.json")
 
     def test_emits_every_mapped_hazard(self):
         self.assertEqual(
             set(self.df["indicator_id"].unique()),
-            {"hazard_nri_composite", "hazard_nri_hurricane", "hazard_nri_wildfire"},
+            {
+                "hazard_nri_composite", "hazard_nri_hurricane", "hazard_nri_wildfire",
+                "hazard_nri_heatwave", "hazard_nri_drought", "hazard_nri_tornado",
+                "hazard_fatality_risk_per100k",
+            },
         )
+
+    def test_per_capita_risk_is_normalised_by_population(self):
+        # FEMA's headline score ranks expected annual LOSS, which scales with how much
+        # property a county contains. This one must not: it is loss of life over people.
+        r = self.df.filter(
+            (self.df["indicator_id"] == "hazard_fatality_risk_per100k")
+            & (self.df["geo_id"] == "37183")
+        )
+        # (0.9 + 1.2 + 0.4 + 0.1) / 1,150,000 * 100,000
+        self.assertAlmostEqual(r["value"][0], 2.6 / 1_150_000 * 100_000, places=6)
 
     def test_blank_hazard_cell_is_null_not_zero(self):
         # "no hurricane column value" and "zero hurricane risk" are different claims.

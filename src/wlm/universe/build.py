@@ -19,6 +19,8 @@ import polars as pl
 from wlm.geo import (
     MIN_PLACE_POPULATION,
     PlaceCountyCrosswalk,
+    PlaceCountyLink,
+    nearest_county,
     STATE_FIPS,
     classify_place,
     is_in_scope,
@@ -47,6 +49,7 @@ class BuildReport:
     places_no_population: int = 0
     places_unmatched_county: int = 0
     places_multi_county: int = 0
+    places_county_by_centroid: int = 0
     incorporated: int = 0
     cdp: int = 0
     out_of_scope: int = 0
@@ -62,6 +65,7 @@ class BuildReport:
             f"  below floor           {self.places_below_floor:>7,}",
             f"  no population figure  {self.places_no_population:>7,}",
             f"  spanning >1 county    {self.places_multi_county:>7,}",
+            f"  county via centroid   {self.places_county_by_centroid:>7,}  (name lookup failed)",
             f"  no county match       {self.places_unmatched_county:>7,}",
             f"out-of-scope rows       {self.out_of_scope:>7,}  (territories)",
             f"UNIVERSE TOTAL          {self.counties + self.places_kept:>7,}",
@@ -76,12 +80,20 @@ class BuildReport:
 
 
 def read_gazetteer(path: Path) -> list[dict[str, str]]:
-    """Read a Census Gazetteer file.
+    """Read a Census Gazetteer file, from a .zip or a plain .txt.
 
     Gazetteer files are tab-delimited and pad both headers and values with whitespace, so
     everything is stripped on the way in.
     """
-    text = path.read_text(encoding="utf-8-sig")
+    path = Path(path)
+    if path.suffix == ".zip":
+        import zipfile
+
+        with zipfile.ZipFile(path) as z:
+            name = next(n for n in z.namelist() if n.endswith(".txt"))
+            text = z.read(name).decode("utf-8-sig", errors="replace")
+    else:
+        text = path.read_text(encoding="utf-8-sig", errors="replace")
     rows: list[dict[str, str]] = []
     for rec in csv.DictReader(text.splitlines(), delimiter="\t"):
         rows.append({(k or "").strip().upper(): (v or "").strip() for k, v in rec.items()})
@@ -129,6 +141,8 @@ def build_places(
     population: dict[str, int],
     crosswalk: PlaceCountyCrosswalk,
     report: BuildReport,
+    county_centroids: dict[str, tuple[float, float]] | None = None,
+    place_classes: dict[str, str] | None = None,
 ) -> tuple[pl.DataFrame, pl.DataFrame]:
     out: list[dict] = []
     weights: list[dict] = []
@@ -152,13 +166,24 @@ def build_places(
             continue
 
         links = crosswalk.counties_for(geoid)
+        if not links and county_centroids:
+            # Name-based lookup failed. Fall back to the nearest county centroid within the
+            # same state rather than dropping the place — a systematic gap (Connecticut's
+            # 2022 switch to planning regions is the live example) would bias the universe
+            # far worse than an approximate assignment.
+            lat, lon = _float(r.get("INTPTLAT")), _float(r.get("INTPTLONG"))
+            if lat is not None and lon is not None:
+                guess = nearest_county(lat, lon, county_centroids, same_state=geoid[:2])
+                if guess:
+                    links = [PlaceCountyLink(geoid, guess, 1.0)]
+                    report.places_county_by_centroid += 1
         if not links:
             report.places_unmatched_county += 1
             continue
         if len(links) > 1:
             report.places_multi_county += 1
 
-        klass = classify_place(r.get("LSAD"))
+        klass = (place_classes or {}).get(geoid) or classify_place(r.get("LSAD"))
         report.incorporated += klass == "incorporated"
         report.cdp += klass == "cdp"
 
@@ -169,7 +194,9 @@ def build_places(
                 "name": r.get("NAME", ""),
                 "state_usps": r.get("USPS") or STATE_FIPS[geoid[:2]],
                 "state_fips": geoid[:2],
-                "county_geoid": crosswalk.primary_county(geoid),
+                # Read from `links`, not the crosswalk: centroid-rescued places have
+                # links built here that the crosswalk has never seen.
+                "county_geoid": max(links, key=lambda ln: ln.weight).county_geoid,
                 "population": pop,
                 "land_sqmi": _float(r.get("ALAND_SQMI")),
                 "lat": _float(r.get("INTPTLAT")),
@@ -196,11 +223,23 @@ def build(
     crosswalk: PlaceCountyCrosswalk,
     out_dir: Path = PROCESSED,
     write: bool = True,
+    place_classes: dict[str, str] | None = None,
 ) -> tuple[pl.DataFrame, pl.DataFrame, BuildReport]:
     report = BuildReport()
 
-    counties = build_counties(read_gazetteer(counties_file), population, report)
-    places, weights = build_places(read_gazetteer(places_file), population, crosswalk, report)
+    county_rows = read_gazetteer(counties_file)
+    counties = build_counties(county_rows, population, report)
+
+    centroids = {
+        norm_fips(r["GEOID"], 5): (lat, lon)
+        for r in county_rows
+        if (lat := _float(r.get("INTPTLAT"))) is not None
+        and (lon := _float(r.get("INTPTLONG"))) is not None
+    }
+    places, weights = build_places(
+        read_gazetteer(places_file), population, crosswalk, report,
+        county_centroids=centroids, place_classes=place_classes,
+    )
 
     universe = pl.concat([counties, places], how="vertical").select(UNIVERSE_COLUMNS)
 

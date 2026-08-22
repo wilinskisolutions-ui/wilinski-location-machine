@@ -1,0 +1,215 @@
+{
+  "schema_version": 1,
+  "updated_at": "2026-08-22T23:29:48+00:00",
+  "entries": [
+    {
+      "source_id": "bea_rpp",
+      "url": "https://apps.bea.gov/regional/zip/MARPP.zip",
+      "path": "bea_rpp/MARPP.zip",
+      "retrieved_at": "2026-08-22T23:17:40+00:00",
+      "sha256": "5dbf2e6ac2af222cc9abc205586c9b480344d89392752eb689c3ec823a34c83e",
+      "bytes": 146479,
+      "synthetic": false,
+      "vintage": null,
+      "note": null
+    },
+    {
+      "source_id": "bls_qcew",
+      "url": "https://data.bls.gov/cew/data/files/2024/csv/2024_annual_singlefile.zip",
+      "path": "bls_qcew/2024_annual_singlefile.zip",
+      "retrieved_at": "2026-08-22T23:17:44+00:00",
+      "sha256": "334ac1ec9101f516ed9698859a165666c6f6d08a51b35cb5fc1e1bf62e06b0da",
+      "bytes": 74697761,
+      "synthetic": false,
+      "vintage": null,
+      "note": null
+    },
+    {
+      "source_id": "census_acs5",
+      "url": "https://www2.census.gov/programs-surveys/acs/summary_file/2023/table-based-SF/data/5YRData/acsdt5y2023-b01003.dat",
+      "path": "census_acs5/acsdt5y2023-b01003.dat",
+      "retrieved_at": "2026-08-22T23:19:02+00:00",
+      "sha256": "24ae3f523b4c54332ce0a71ba534569685a8a729056f975915d860d1eb943565",
+      "bytes": 18311997,
+      "synthetic": false,
+      "vintage": null,
+      "note": null
+    },
+    {
+      "source_id": "census_cbp",
+      "url": "https://www2.census.gov/programs-surveys/cbp/datasets/2022/cbp22co.zip",
+      "path": "census_cbp/cbp22co.zip",
+      "retrieved_at": "2026-08-22T23:17:39+00:00",
+      "sha256": "dcea1d9a7060cdb763c841d863163856ba8d5a50dce9056992bdeacd08ff99b4",
+      "bytes": 13723814,
+      "synthetic": false,
+      "vintage": null,
+      "note": null
+    },
+    {
+      "source_id": "census_cbsa",
+      "url": "https://www2.census.gov/programs-surveys/metro-micro/geographies/reference-files/2023/delineation-files/list1_2023.xlsx",
+      "path": "census_cbsa/list1_2023.xlsx",
+      "retrieved_at": "2026-08-22T23:17:36+00:00",
+      "sha256": "952c4b1e78acbb54e6ec9412434b7602fedacbf021736351a63c181bdb753629",
+      "bytes": 143798,
+      "synthetic": false,
+      "vintage": null,
+      "note": null
+    },
+    {
+      "source_id": "census_cenpop",
+      "url": "https://www2.census.gov/geo/docs/reference/cenpop2020/county/CenPop2020_Mean_CO.txt",
+      "path": "census_cenpop/CenPop2020_Mean_CO.txt",
+      "retrieved_at": "2026-08-22T23:26:41+00:00",
+      "sha256": "4f754a3bda9714e5820d73bfac44ef1dab2b8c371f6c136305474cda7a752014",
+      "bytes": 171276,
+      "synthetic": false,
+      "vintage": null,
+      "note": null
+    },
+    {
+      "source_id": "census_gazetteer",
+      "url": "https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2024_Gazetteer/2024_Gaz_counties_national.zip",
+      "path": "census_gazetteer/2024_Gaz_counties_national.zip",
+      "retrieved_at": "2026-08-22T23:17:32+00:00",
+      "sha256": "3c337402b5c6e8d5aa26b4278ccf4edc8989f2683765b3ffbf22296cdb2df3a0",
+      "bytes": 141679,
+      "synthetic": false,
+      "vintage": null,
+      "note": null
+    },
+    {
+      "source_id": "census_gazetteer",
+      "url": "https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2024_Gazetteer/2024_Gaz_place_national.zip",
+      "path": "census_gazetteer/2024_Gaz_place_national.zip",
+      "retrieved_at": "2026-08-22T23:17:33+00:00",
+      "sha256": "cf262fc92b2326f7a8c62a89d156a60eb17d64d6d35f7a62310c43bb08972c06",
+      "bytes": 1221402,
+      "synthetic": false,
+      "vintage": null,
+      "note": null
+    },
+    {
+      "source_id": "census_pep",
+      "url": "https://www2.census.gov/programs-surveys/popest/datasets/2020-2024/counties/totals/co-est2024-alldata.csv",
+      "path": "census_pep/co-est2024-alldata.csv",
+      "retrieved_at": "2026-08-22T23:17:35+00:00",
+      "sha256": "abcc8720d669e793bbfdcd440eeec37a78db3b452adbe4ccd1eadf7c72b522b9",
+      "bytes": 1769182,
+      "synthetic": false,
+      "vintage": null,
+      "note": null
+    },
+    {
+      "source_id": "census_pep",
+      "url": "https://www2.census.gov/programs-surveys/popest/datasets/2020-2024/cities/totals/sub-est2024.csv",
+      "path": "census_pep/sub-est2024.csv",
+      "retrieved_at": "2026-08-22T23:17:33+00:00",
+      "sha256": "af9cd4835c93552a2161fc88bf4d7aa31e81b4f16f7457980b95295cf91e49e9",
+      "bytes": 7087080,
+      "synthetic": false,
+      "vintage": null,
+      "note": null
+    },
+    {
+      "source_id": "census_place_codes",
+      "url": "https://www2.census.gov/geo/docs/reference/codes2020/national_place2020.txt",
+      "path": "census_place_codes/national_place2020.txt",
+      "retrieved_at": "2026-08-22T23:17:36+00:00",
+      "sha256": "302ff3cf031217aca032d89f42c0dd93611a76d72ab2036944fa40d5c23c6613",
+      "bytes": 2518286,
+      "synthetic": false,
+      "vintage": null,
+      "note": null
+    },
+    {
+      "source_id": "chr_rwjf",
+      "url": "https://www.countyhealthrankings.org/sites/default/files/media/document/analytic_data2025.csv",
+      "path": "chr_rwjf/analytic_data2025.csv",
+      "retrieved_at": "2026-08-22T23:17:46+00:00",
+      "sha256": "e5a038a89439b1a7a872a62c6699cd3aa69f5d02ca2f6aac4d16749a146a833e",
+      "bytes": 13085669,
+      "synthetic": false,
+      "vintage": null,
+      "note": null
+    },
+    {
+      "source_id": "epa_aqs",
+      "url": "https://aqs.epa.gov/aqsweb/airdata/annual_conc_by_monitor_2024.zip",
+      "path": "epa_aqs/annual_conc_by_monitor_2024.zip",
+      "retrieved_at": "2026-08-22T23:17:45+00:00",
+      "sha256": "8af92d1ec8ac9271babc84e3512cb2068e6a8849af438448c4170fd9e99ea5bb",
+      "bytes": 3979542,
+      "synthetic": false,
+      "vintage": null,
+      "note": null
+    },
+    {
+      "source_id": "ghcn_stations",
+      "url": "https://www.ncei.noaa.gov/pub/data/ghcn/daily/ghcnd-stations.txt",
+      "path": "ghcn_stations/ghcnd-stations.txt",
+      "retrieved_at": "2026-08-22T23:17:38+00:00",
+      "sha256": "91e4bd9b4c991c3ea9c19062eae73bca118cad0f4a436e33149ff345bffc8f9c",
+      "bytes": 11395086,
+      "synthetic": false,
+      "vintage": null,
+      "note": null
+    },
+    {
+      "source_id": "nhtsa_fars",
+      "url": "https://static.nhtsa.gov/nhtsa/downloads/FARS/2023/National/FARS2023NationalCSV.zip",
+      "path": "nhtsa_fars/FARS2023NationalCSV.zip",
+      "retrieved_at": "2026-08-22T23:17:51+00:00",
+      "sha256": "edde841eb493e55751961b36bac2d1ce8750f601cb8e6e183a525723bb62bab0",
+      "bytes": 34174899,
+      "synthetic": false,
+      "vintage": null,
+      "note": null
+    },
+    {
+      "source_id": "noaa_normals",
+      "url": "https://www.ncei.noaa.gov/data/normals-annualseasonal/1991-2020/archive/us-climate-normals_1991-2020_v1.0.1_annualseasonal_multivariate_by-station_c20230404.tar.gz",
+      "path": "noaa_normals/us-climate-normals_1991-2020_v1.0.1_annualseasonal_multivariate_by-station_c20230404.tar.gz",
+      "retrieved_at": "2026-08-22T23:17:37+00:00",
+      "sha256": "0fdb814203150780d4ee0c5d53c7844a237a21881101fb7d922b0aa3a1fd190f",
+      "bytes": 54176270,
+      "synthetic": false,
+      "vintage": null,
+      "note": null
+    },
+    {
+      "source_id": "openflights",
+      "url": "https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat",
+      "path": "openflights/airports.dat",
+      "retrieved_at": "2026-08-22T23:29:47+00:00",
+      "sha256": "9387cdb38df5bd664da823f8ccb69fdd9b33a1888f5b7cca09c34a3cd9ff59f9",
+      "bytes": 1127225,
+      "synthetic": false,
+      "vintage": null,
+      "note": null
+    },
+    {
+      "source_id": "zillow_research",
+      "url": "https://files.zillowstatic.com/research/public_csvs/zhvi/Metro_zhvi_uc_sfrcondo_tier_0.33_0.67_sm_sa_month.csv",
+      "path": "zillow_research/Metro_zhvi_uc_sfrcondo_tier_0.33_0.67_sm_sa_month.csv",
+      "retrieved_at": "2026-08-22T23:17:47+00:00",
+      "sha256": "9d8c9d0c78b9b4247f5cb106cacbe566f7593fc04d233872c37c0972dd180c5e",
+      "bytes": 4459358,
+      "synthetic": false,
+      "vintage": null,
+      "note": null
+    },
+    {
+      "source_id": "zillow_research",
+      "url": "https://files.zillowstatic.com/research/public_csvs/zori/Metro_zori_uc_sfrcondomfr_sm_month.csv",
+      "path": "zillow_research/Metro_zori_uc_sfrcondomfr_sm_month.csv",
+      "retrieved_at": "2026-08-22T23:17:49+00:00",
+      "sha256": "101b64c46ec30a929b69ccd64ade2446951830a866e315090d9c61d7ee749b4d",
+      "bytes": 1054808,
+      "synthetic": false,
+      "vintage": null,
+      "note": null
+    }
+  ]
+}

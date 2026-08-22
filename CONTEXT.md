@@ -5,9 +5,9 @@
 > is the project's working memory: a session that reads it should be able to resume cold
 > without re-deriving anything or re-asking a settled question.
 
-**Current phase:** Phase 1 — Universe · **Status:** built and tested; runs on synthetic
-fixtures only, because the data hosts are still blocked
-**Blocking Phase 2:** the network allowlist (`docs/network-allowlist.md`)
+**Current phase:** Phase 2 — Real data · **Status:** Tier 1 complete on real downloads;
+9,885-place universe built, 23 indicators populated
+**Blocking Phase 3:** the questionnaire, plus the household's calibration ratings
 **Last updated:** 2026-08-22
 
 ---
@@ -23,7 +23,10 @@ Phase 3 questionnaire; anything already known is recorded here so it is never re
 | Contact | business@wilinskisolutions.com |
 | Preferred names / pronouns | **UNKNOWN — ask before writing either into any document** |
 | Move type | Domestic (already living in the US) |
-| **Current residence** | **UNKNOWN — highest-value missing fact. See Open Questions #1.** |
+| **Current residence** | **Harrisburg, PA** — place `4232800` (pop 50,649), Dauphin County `42043` (pop 293,029), Harrisburg–Carlisle metro. Verified against Census files. |
+| Baseline role | **Baseline only.** Scored and used as the reference, excluded from candidates — they are definitely leaving. |
+| Push factors | **Climate/weather** and **things to do, culture, food.** Built first and deepest. |
+| Geographic pull | No hard constraint. Warm preferred; family in Europe, which they read as implying the east coast. |
 | Work situation | Unknown — appears to involve a business (`wilinskisolutions`); confirm whether income is location-independent |
 | Budget | Unknown |
 | Timeline | Unknown |
@@ -161,6 +164,59 @@ Recorded because both would have been near-invisible later:
   gave population a tight lower shoulder; the village now scores 0.00 and a 20,000-person
   town gets partial credit at 0.38.
 
+### 2026-08-22 — Phase 2: real data, and five corrections it forced
+Network opened; 21 of 26 sources verified by live probe. Tier 1 (the household's stated
+priorities) built end to end. Five things the real data changed:
+
+1. **The Census API now requires a key** (`X-DataWebAPI-KeyError`). Pivoted entirely to
+   keyless bulk files, which suits Principle 3 better anyway — bulk files are versioned and
+   checksummable; an API is a moving target.
+2. **PEP contains no CDPs.** 19,465 of its 19,479 place rows are active incorporated, so
+   the decision to include census designated places would have silently failed. Place
+   population now comes from the ACS bulk table (32,325 place rows) for *all* places, one
+   vintage, so vintage never correlates with place class. Counties use PEP 2024.
+3. **Connecticut has no counties.** It replaced them with nine planning regions in 2022;
+   the 2020 place-codes file names the old ones, the 2024 Gazetteer carries the new. 216
+   lookups failed, which would have dropped Connecticut entirely. Fixed with a general
+   nearest-centroid fallback rather than a CT special case, and counted in the build report.
+4. **Geometric county centroids bias climate.** Dauphin's sits 7.5 miles north of its
+   population centroid, in higher ground, reading ~3F colder than Harrisburg itself.
+   Switched to Census population-weighted centroids: climate should be measured where
+   people live.
+5. **FEMA's headline risk score is population-confounded.** `RISK_SCORE` ranks expected
+   annual *loss*, which scales with how much property exists — Los Angeles scores 100
+   partly for being Los Angeles. Used raw it penalises populous counties, fighting this
+   household's amenity preference for reasons unrelated to safety. Added
+   `hazard_fatality_risk_per100k` from expected annual loss of life over population. The
+   two nearly invert: Gallatin MT is 81st percentile on FEMA's composite but carries **5x
+   Miami-Dade's per-capita fatality risk**; Manhattan looks risky and is the safest per
+   person.
+
+### 2026-08-22 — The east-coast assumption, measured
+The household reads "cheap access to Europe" as implying the east coast. Built as a
+measurement rather than a preference. Result: **40 US airports have European nonstops**,
+including Chicago (34 destinations), Atlanta (28), **Austin (23)**, Detroit (22),
+Charlotte (19), Dallas (17), Denver (16), Minneapolis (15), Seattle (14), Houston (13).
+Austin beats Charlotte, Denver and Dallas. The east-coast constraint is measurably weaker
+than assumed.
+
+Hub selection is **best reachable within 200 miles**, not nearest: from Harrisburg, Dulles
+is 22 miles further than Baltimore and offers 66 European destinations against 18. Picking
+"nearest" would have understated every place sitting between two hubs.
+
+**And the finding that cuts hardest: Harrisburg already ranks 92nd percentile for European
+access and 14th percentile for per-capita hazard risk.** It is already safe and already
+well connected. Most warmer places will be worse on both — the move has to be justified on
+climate and amenities, which is what the household said was driving it.
+
+### 2026-08-22 — Preliminary signal (NOT a ranking)
+A crude four-condition filter — warmer than Harrisburg, more restaurants, more arts venues,
+lower per-capita hazard risk, population over 100k — leaves **26 of 3,143 counties**.
+States: NY 5, VA 5, CA 4, GA 3, NC 1, MA 1, CO 1, OR 1, NM 1, WV 1. **No Florida, no Texas,
+no South Carolina, no Tennessee** — the Sunbelt corridor does not survive its own hazard
+numbers. Equal implicit weights, 23 indicators, no elicited preferences: indicative only.
+Real scoring is Phase 4.
+
 ---
 
 ## Data inventory
@@ -171,11 +227,16 @@ ingest state and is filled in during Phase 2.
 
 | Source | Geo level | Vintage | Coverage | Status |
 |---|---|---|---|---|
-| census_gazetteer | county, place | 2024 | — | module written, **download blocked** |
-| census_acs5 | county, place | 2020–2024 | — | module written, **download blocked** |
-| fema_nri | county | 2023 | — | module written, **download blocked** |
-| usda_amenities | county | 1999 | — | module written, **download blocked** |
-| _(34 others)_ | | | | Phase 2 |
+| census_gazetteer | county, place | 2024 | 100% | **ingested** |
+| census_acs5 (bulk B01003) | county, place | 2019–2023 | 100% | **ingested** — the only CDP population source |
+| census_pep | county, place | 2024 | 100% | **ingested** |
+| census_place_codes / cenpop | place / county | 2020 | 100% | **ingested** — crosswalk + centroids |
+| noaa_normals | county | 1991–2020 | 3,142/3,144 | **ingested** — 15,616 stations |
+| census_cbp | county | 2022 | 3,045 | **ingested** — replaces blocked Overpass |
+| bts_intl + openflights | county | 2024 | 100% | **ingested** — 40 transatlantic hubs |
+| fema_nri (ArcGIS) | county | 2023 | 100% | **ingested** — static host is WAF-blocked |
+| bls_qcew, bea_rpp, epa_aqs, chr_rwjf, zillow, nhtsa_fars | — | — | — | downloaded, **ingest modules pending (Tier 2)** |
+| _(remaining)_ | | | | Phase 2 continuation |
 
 Concrete download URLs are pinned in `DOWNLOADS` in `src/wlm/cli.py`. **None have been
 verified** — every host is denied by the egress policy, so `make data` is the first thing
@@ -190,10 +251,11 @@ that will actually resolve them. A moved URL gets corrected there and in
 |---|---|
 | Domains defined | 13 — 11 scoring, 2 questionnaire-only (`config/domains.yaml`) |
 | Sources registered | 38 (`config/sources.yaml`) |
-| Indicators registered | 50 (`config/indicators.yaml`) — expands to 60+ in Phase 2 |
+| Indicators registered | 68 (`config/indicators.yaml`) |
 | Indicators carrying provisional curve params | 11 — placeholders awaiting Phase 3 elicitation |
-| Indicators with an ingest module written | 5 (ACS, FEMA NRI ×3, USDA amenities) |
-| **Indicators populated with real data** | **0 — every host is still blocked** |
+| Indicators with an ingest module written | 23 |
+| **Indicators populated with real data** | **23** — climate 8, hazard 7, amenities 5, air 3 |
+| Universe | **9,885** — 3,144 counties + 6,741 places (4,811 incorporated, 1,930 CDP) |
 
 Validate with `make validate`; the invariants are enforced mechanically and the negative
 cases are covered by `make test` (90 tests, none needing network).
@@ -207,6 +269,10 @@ cases are covered by `make test` (90 tests, none needing network).
    the calibration set, and it determines what "better" even means. First question of the
    Phase 3 questionnaire; ask sooner if the chance arises.
 2. **Preferred names and pronouns** — see the 2026-08-22 decision above.
+2b. **Climate is measured at county level**, so a county average differs from the specific
+   town: Dauphin reads 32.4F winter against Harrisburg station's 34.7F. Acceptable for
+   Phase 2, but climate is a top-weighted domain — consider place-centroid weighting in
+   Phase 4.
 3. **Is household income location-independent?** Decides whether the career/economy domain
    is weighted heavily or nearly zeroed, which shifts a large share of the total weight.
 4. **Children — current and planned.** Schools, childcare cost, and family services are
@@ -225,12 +291,13 @@ cases are covered by `make test` (90 tests, none needing network).
 
 ## Next actions
 
-1. **Add the hostnames in `docs/network-allowlist.md`** to the environment's egress policy.
-   This is now the only thing blocking real data — the pipeline is written and tested.
-2. **Run `make data`, then `make universe`.** First real run resolves and pins the download
-   URLs. Expect roughly 3,143 counties and 7,000–8,000 places; anything far off that is a
-   bug, not a surprise.
-3. **Phase 2 — Ingest:** expand to 60+ indicators. NOAA station→county aggregation is the
-   known-fiddly one, deliberately deferred out of Phase 1.
-4. **Capture current residence** at the earliest opportunity (Open Question #1) — still the
-   highest-value missing fact.
+1. **Finish Tier 2 ingest.** Files are downloaded and manifested; modules still needed for
+   `bls_qcew`, `bea_rpp`, `epa_aqs`, `chr_rwjf`, `zillow_research`, `nhtsa_fars`. Each is a
+   reader plus a column map against the existing `emit` contract.
+2. **Resolve the two unreachable sources.** SEDA's download links are JS-gated (needs one
+   manual download registered into the manifest); HUD FMR returns 202 with zero bytes —
+   Zillow ZORI covers rent meanwhile.
+3. **Get the household's calibration ratings** — 15–20 places they know, rated 1–10,
+   including Harrisburg. Without it no ranking is trustworthy, and it is the cheapest thing
+   left to collect.
+4. **Phase 3 — Questionnaire.** Weights by forced trade-off; both partners independently.

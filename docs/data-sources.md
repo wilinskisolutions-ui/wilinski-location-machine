@@ -125,6 +125,24 @@ Non-PD sources are flagged and carry attribution or non-commercial terms — not
 |---|---|---|---|---|
 | DOL National Database of Childcare Prices | `dol.gov/agencies/wb/topics/childcare/price-by-age-care-setting` | county | 2022 | PD |
 
+## Air connectivity to Europe
+
+| Source | URL | Geo | Vintage | License |
+|---|---|---|---|---|
+| BTS international air segments | `data.transportation.gov/resource/xgub-n9bw.json` | US airport → county | 2024 | PD |
+| OpenFlights airport coordinates | `raw.githubusercontent.com/jpatokal/openflights` | airport | current | ODbL, attribution |
+
+> **Why this exists.** The household has family in Europe and reads "cheap access to
+> Europe" as implying the east coast. That is an inference, not a fact — transatlantic
+> nonstops also run from Denver, Dallas, Houston, Phoenix, Chicago, Minneapolis and
+> Seattle. Encoding "east coast" as a preference would smuggle in an assumption; measuring
+> **nonstop European destinations from the nearest hub, and the drive to reach it**, lets
+> the ranking test it instead.
+>
+> Europe is world area codes **400–499** in the BTS scheme (Copenhagen 419, Paris 427,
+> Frankfurt 429, Dublin 441, Amsterdam 461, Madrid 482, London 493). Istanbul is 679 and
+> correctly falls outside.
+
 ## Connectivity and amenities
 
 | Source | URL | Geo | Vintage | License |
@@ -132,7 +150,8 @@ Non-PD sources are flagged and carry attribution or non-commercial terms — not
 | FCC National Broadband Map | `broadbandmap.fcc.gov` | block → county | biannual | PD |
 | BTS T-100 / airport data | `transtats.bts.gov` | airport | monthly | PD |
 | FTA National Transit Database | `transit.dot.gov/ntd` | agency, metro | annual | PD |
-| OpenStreetMap via Overpass | `overpass-api.de` | point → place | live | ODbL, attribution required |
+| **County Business Patterns** | `www2.census.gov/programs-surveys/cbp/datasets/` | county | 2022 | PD |
+| ~~OpenStreetMap via Overpass~~ | `overpass-api.de` | — | — | **egress-blocked, replaced by CBP** |
 
 > **OSM is the amenity workhorse.** Counts of groceries, gyms, parks, libraries,
 > trailheads, clinics, places of worship, and third places, computed per capita within a

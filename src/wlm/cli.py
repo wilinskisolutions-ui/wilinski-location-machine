@@ -16,24 +16,88 @@ from pathlib import Path
 
 # Concrete download URLs, pinned per source.
 #
-# These could NOT be verified: every data host is denied by the egress policy (see
-# docs/network-allowlist.md), so `make data` is the first thing that will actually resolve
-# them. A moved URL is corrected here and in docs/data-sources.md — never worked around.
+# Every URL here was verified by live probe on 2026-08-22 (status and byte count recorded
+# in CONTEXT.md). Three notes worth keeping:
+#
+#   * api.census.gov now requires a registered key (X-DataWebAPI-KeyError). Everything
+#     Census comes from keyless bulk files instead, which suits Principle 3 better anyway:
+#     bulk files are versioned and checksummable, an API is a moving target.
+#   * hazards.fema.gov and www.fema.gov return 403 to every header combination — a WAF
+#     block, not the egress policy. FEMA NRI comes from ArcGIS instead (see ingest/fema_nri).
+#   * overpass-api.de and its mirrors are egress-blocked. County Business Patterns replaces
+#     OSM for amenity density: authoritative, complete, no rate limits.
 DOWNLOADS: dict[str, list[str]] = {
+    # --- universe ---
     "census_gazetteer": [
         "https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2024_Gazetteer/2024_Gaz_counties_national.zip",
         "https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2024_Gazetteer/2024_Gaz_place_national.zip",
     ],
+    "census_pep": [
+        # SUMLEV 162 = place totals; SUMLEV 157 = place x county, which supplies the
+        # population weights for places straddling county lines.
+        "https://www2.census.gov/programs-surveys/popest/datasets/2020-2024/cities/totals/sub-est2024.csv",
+        "https://www2.census.gov/programs-surveys/popest/datasets/2020-2024/counties/totals/co-est2024-alldata.csv",
+    ],
     "census_acs5": [
-        "https://api.census.gov/data/2023/acs/acs5?get=NAME,B01003_001E&for=county:*",
-        "https://api.census.gov/data/2023/acs/acs5?get=NAME,B01003_001E&for=place:*",
+        # Table-based summary file, not the API (which now needs a key). B01003 = total
+        # population for EVERY geography including CDPs, which PEP omits entirely: of
+        # sub-est2024's 19,479 place rows, 19,465 are active incorporated. GEO_IDs are
+        # self-describing ("1600000US4232800" = place), so the 92MB geography lookup is
+        # unnecessary.
+        "https://www2.census.gov/programs-surveys/acs/summary_file/2023/table-based-SF/data/5YRData/acsdt5y2023-b01003.dat",
     ],
-    "fema_nri": [
-        "https://hazards.fema.gov/nri/Content/StaticDocuments/DataDownload/NRI_Table_Counties/NRI_Table_Counties.zip",
+    "census_place_codes": [
+        "https://www2.census.gov/geo/docs/reference/codes2020/national_place2020.txt",
     ],
-    "usda_amenities": [
-        "https://www.ers.usda.gov/webdocs/DataFiles/53058/natamenf_1_.xls",
+    "census_cenpop": [
+        # Population-weighted county centroids. Materially better than the Gazetteer's
+        # geometric centroid for anything experienced where people live: Dauphin County's
+        # geometric centre sits 7.5 miles north of its population centre, in higher and
+        # colder terrain, which biased its climate reading by ~3F.
+        "https://www2.census.gov/geo/docs/reference/cenpop2020/county/CenPop2020_Mean_CO.txt",
     ],
+    "census_cbsa": [
+        "https://www2.census.gov/programs-surveys/metro-micro/geographies/reference-files/2023/delineation-files/list1_2023.xlsx",
+    ],
+
+    # --- tier 1: climate ---
+    "noaa_normals": [
+        "https://www.ncei.noaa.gov/data/normals-annualseasonal/1991-2020/archive/us-climate-normals_1991-2020_v1.0.1_annualseasonal_multivariate_by-station_c20230404.tar.gz",
+    ],
+    "ghcn_stations": [
+        "https://www.ncei.noaa.gov/pub/data/ghcn/daily/ghcnd-stations.txt",
+    ],
+
+    # --- tier 1: things to do ---
+    "census_cbp": [
+        "https://www2.census.gov/programs-surveys/cbp/datasets/2022/cbp22co.zip",
+    ],
+
+    # --- tier 2 ---
+    "openflights": [
+        "https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat",
+    ],
+    "bea_rpp": ["https://apps.bea.gov/regional/zip/MARPP.zip"],
+    "bls_qcew": ["https://data.bls.gov/cew/data/files/2024/csv/2024_annual_singlefile.zip"],
+    "epa_aqs": ["https://aqs.epa.gov/aqsweb/airdata/annual_conc_by_monitor_2024.zip"],
+    "chr_rwjf": [
+        "https://www.countyhealthrankings.org/sites/default/files/media/document/analytic_data2025.csv"
+    ],
+    "zillow_research": [
+        "https://files.zillowstatic.com/research/public_csvs/zhvi/Metro_zhvi_uc_sfrcondo_tier_0.33_0.67_sm_sa_month.csv",
+        "https://files.zillowstatic.com/research/public_csvs/zori/Metro_zori_uc_sfrcondomfr_sm_month.csv",
+    ],
+    "nhtsa_fars": [
+        "https://static.nhtsa.gov/nhtsa/downloads/FARS/2023/National/FARS2023NationalCSV.zip"
+    ],
+}
+
+# Sources fetched through a query API rather than a static file. Handled by their own
+# ingest modules, which page through results and write one file per source.
+API_SOURCES = {
+    "cdc_wonder": "https://data.cdc.gov/resource/489q-934x.json",
+    "bts_intl": "https://data.transportation.gov/resource/xgub-n9bw.json",
+    "fema_nri": "arcgis",
 }
 
 
@@ -64,6 +128,128 @@ def stage_data(args) -> int:
         )
         return 1
     print(f"\nall sources present; manifest at {manifest.path}")
+    return 0
+
+
+def stage_universe(args) -> int:
+    """Build the real candidate universe from downloaded Census files."""
+    from wlm.geo import build_crosswalk, county_name_index, parse_place_codes
+    from wlm.ingest import census_acs, census_pep
+    from wlm.paths import PROCESSED, RAW
+    from wlm.universe.build import build, read_gazetteer
+
+    gaz_counties = RAW / "census_gazetteer" / "2024_Gaz_counties_national.zip"
+    gaz_places = RAW / "census_gazetteer" / "2024_Gaz_place_national.zip"
+    place_codes = RAW / "census_place_codes" / "national_place2020.txt"
+    sub_est = RAW / "census_pep" / "sub-est2024.csv"
+    co_est = RAW / "census_pep" / "co-est2024-alldata.csv"
+    acs_bulk = next((RAW / "census_acs5").glob("*.dat"), None)
+
+    missing = [p for p in (gaz_counties, gaz_places, place_codes, sub_est, co_est) if not p.exists()]
+    if missing or acs_bulk is None:
+        print("universe: missing inputs — run `make data` first:", file=sys.stderr)
+        for m in missing:
+            print(f"  {m}", file=sys.stderr)
+        if acs_bulk is None:
+            print(f"  {RAW / 'census_acs5'}/*.dat", file=sys.stderr)
+        return 1
+
+    # Population sources, chosen deliberately:
+    #   counties -> PEP 2024, the most current official estimate.
+    #   places   -> ACS 5-year for ALL places, incorporated and CDP alike.
+    # PEP omits census designated places entirely (19,465 of its 19,479 place rows are
+    # active incorporated), so PEP-for-incorporated + ACS-for-CDP would make vintage
+    # correlate with place class. One source for all places keeps them comparable, and
+    # percentiles are computed within geo_level so places are never ranked against counties.
+    county_pop = census_pep.county_population(co_est)
+    place_pop = {g: v for g, v in census_acs.population_from_bulk(acs_bulk).items() if len(g) == 7}
+    population = {**county_pop, **place_pop}
+
+    county_rows = read_gazetteer(gaz_counties)
+    index = county_name_index(county_rows)
+    code_rows, place_classes, unmatched = parse_place_codes(place_codes, index)
+    crosswalk, xw_stats = build_crosswalk(code_rows, census_pep.place_county_weights(sub_est))
+
+    universe, weights, report = build(
+        counties_file=gaz_counties,
+        places_file=gaz_places,
+        population=population,
+        crosswalk=crosswalk,
+        place_classes=place_classes,
+        write=True,
+    )
+
+    print(report.render())
+    print()
+    print(f"crosswalk: {xw_stats['places_with_population_weights']:,} places with real "
+          f"population weights, {xw_stats['places_evenly_split']:,} split evenly")
+    if unmatched:
+        states = sorted({u.split("/")[0] for u in unmatched})
+        print(f"           {len(unmatched):,} county-name lookups failed (states: {', '.join(states)})")
+        print("           handled by the nearest-centroid fallback, counted above")
+    print(f"\nwrote {PROCESSED / 'universe.parquet'}")
+    return 0
+
+
+def stage_features(args) -> int:
+    """Run every ingest module against the real downloads and build the feature table."""
+    import polars as pl
+
+    from wlm import baseline
+    from wlm.features.build import build as build_features
+    from wlm.geo import read_population_centroids
+    from wlm.ingest import bts_intl, census_cbp, fema_nri, noaa_normals
+    from wlm.paths import PROCESSED, RAW, UNIVERSE
+
+    if not UNIVERSE.exists():
+        print("features: run `make universe` first", file=sys.stderr)
+        return 1
+
+    universe = baseline.mark(pl.read_parquet(UNIVERSE))
+    counties = universe.filter(pl.col("geo_level") == "county")
+    population = {g: p for g, p in zip(counties["geo_id"], counties["population"]) if p}
+    centroids = read_population_centroids(RAW / "census_cenpop" / "CenPop2020_Mean_CO.txt")
+
+    frames: list[pl.DataFrame] = []
+
+    climate, cstats = noaa_normals.ingest(
+        next((RAW / "noaa_normals").glob("*.tar.gz")), counties, centroids=centroids
+    )
+    frames.append(climate)
+    print(f"  climate    {climate.height:>7,} rows  ({cstats['counties_matched']:,} counties, "
+          f"{cstats['stations_read']:,} stations)")
+
+    amenities = census_cbp.ingest(RAW / "census_cbp" / "cbp22co.zip", population)
+    frames.append(amenities)
+    print(f"  amenities  {amenities.height:>7,} rows")
+
+    air, astats, _ = bts_intl.ingest(
+        RAW / "bts_intl" / "intl_segments_2024_europe.json",
+        RAW / "openflights" / "airports.dat",
+        counties,
+        centroids=centroids,
+    )
+    frames.append(air)
+    print(f"  air/europe {air.height:>7,} rows  ({astats['hubs']} transatlantic hubs)")
+
+    hazard = fema_nri.ingest(RAW / "fema_nri" / "nri_counties.json")
+    frames.append(hazard)
+    print(f"  hazard     {hazard.height:>7,} rows")
+
+    features, coverage, report = build_features(universe=universe, long_frames=frames, write=False)
+    features = baseline.compare(features)
+
+    PROCESSED.mkdir(parents=True, exist_ok=True)
+    universe.write_parquet(UNIVERSE)
+    features.write_parquet(PROCESSED / "features.parquet")
+    coverage.write_parquet(PROCESSED / "coverage.parquet")
+
+    print()
+    print(report.render())
+    print(f"\nbaseline: {baseline.BASELINE_LABEL} "
+          f"(place {baseline.BASELINE_PLACE}, county {baseline.BASELINE_COUNTY}) "
+          f"— scored, excluded from candidates")
+    print(f"wrote {PROCESSED / 'features.parquet'}")
     return 0
 
 
@@ -102,7 +288,7 @@ def stage_demo(args) -> int:
         for source_id, name in [
             ("census_acs5", "acs_population_places.json"),
             ("census_acs5", "acs_population_counties.json"),
-            ("fema_nri", "fema_nri_counties.csv"),
+            ("fema_nri", "fema_nri_counties.json"),
             ("usda_amenities", "usda_natural_amenities.csv"),
         ]:
             register_fixture(source_id, fixtures / name, root=raw, manifest=manifest)
@@ -124,7 +310,7 @@ def stage_demo(args) -> int:
         print("\n=== FEATURES ===")
         frames = [
             census_acs.ingest([fixtures / "acs_population_places.json"], vintage="2020-2024"),
-            fema_nri.ingest(fixtures / "fema_nri_counties.csv"),
+            fema_nri.ingest(fixtures / "fema_nri_counties.json"),
             usda_amenities.ingest(fixtures / "usda_natural_amenities.csv"),
         ]
         features, coverage, freport = build_features(
@@ -163,8 +349,8 @@ def stage_pending(name: str, phase: int, description: str):
 
 STAGES = {
     "data": stage_data,
-    "universe": stage_needs_real_data("universe"),
-    "features": stage_needs_real_data("features"),
+    "universe": stage_universe,
+    "features": stage_features,
     "demo": stage_demo,
     "score": stage_pending(
         "score", 4, "apply curves, weights, aggregation and knockouts -> scores.parquet"

@@ -38,7 +38,7 @@ class TestSyntheticGuard(unittest.TestCase):
 
     def test_fixture_registers_as_synthetic(self):
         register_fixture(
-            "fema_nri", FIXTURES / "fema_nri_counties.csv", root=self.root, manifest=self.manifest
+            "fema_nri", FIXTURES / "fema_nri_counties.json", root=self.root, manifest=self.manifest
         )
         entries = self.manifest.synthetic_entries()
         self.assertEqual(len(entries), 1)
@@ -46,13 +46,13 @@ class TestSyntheticGuard(unittest.TestCase):
 
     def test_scoring_refuses_synthetic_input(self):
         register_fixture(
-            "fema_nri", FIXTURES / "fema_nri_counties.csv", root=self.root, manifest=self.manifest
+            "fema_nri", FIXTURES / "fema_nri_counties.json", root=self.root, manifest=self.manifest
         )
         with self.assertRaises(SyntheticDataError) as ctx:
             self.manifest.assert_no_synthetic("scoring")
         message = str(ctx.exception)
         self.assertIn("scoring refuses to run", message)
-        self.assertIn("fema_nri_counties.csv", message)  # names the offender
+        self.assertIn("fema_nri_counties.json", message)  # names the offender
         self.assertIn("Principle 4", message)
 
     def test_one_synthetic_input_among_real_ones_still_refuses(self):
@@ -63,14 +63,14 @@ class TestSyntheticGuard(unittest.TestCase):
             root=self.root,
         )
         register_fixture(
-            "fema_nri", FIXTURES / "fema_nri_counties.csv", root=self.root, manifest=self.manifest
+            "fema_nri", FIXTURES / "fema_nri_counties.json", root=self.root, manifest=self.manifest
         )
         with self.assertRaises(SyntheticDataError):
             self.manifest.assert_no_synthetic()
 
     def test_synthetic_flag_survives_a_save_load_round_trip(self):
         register_fixture(
-            "fema_nri", FIXTURES / "fema_nri_counties.csv", root=self.root, manifest=self.manifest
+            "fema_nri", FIXTURES / "fema_nri_counties.json", root=self.root, manifest=self.manifest
         )
         self.manifest.save()
         reloaded = Manifest.load(self.root / "MANIFEST.json")

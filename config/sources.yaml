@@ -10,6 +10,13 @@ sources:
   - {id: census_cbsa,        name: CBSA delineation files,          url: "https://www.census.gov/geographies/reference-files/time-series/demo/metro-micro/delineation-files.html", geo_levels: [metro], vintage: "2023", license: PD}
 
   # --- demographics / housing ---
+  - {id: census_pep,        name: Census Population Estimates,     url: "https://www2.census.gov/programs-surveys/popest/datasets/2020-2024/", geo_levels: [county, place], vintage: "2024", license: PD}
+  - {id: census_place_codes, name: Census place codes + counties,   url: "https://www2.census.gov/geo/docs/reference/codes2020/",  geo_levels: [place],          vintage: "2020",            license: PD}
+  - {id: census_cenpop,     name: Population-weighted centroids,    url: "https://www2.census.gov/geo/docs/reference/cenpop2020/", geo_levels: [county],         vintage: "2020",            license: PD}
+  - {id: census_cbp,        name: County Business Patterns,        url: "https://www2.census.gov/programs-surveys/cbp/datasets/", geo_levels: [county],         vintage: "2022",            license: PD}
+  - {id: ghcn_stations,     name: GHCN station inventory,          url: "https://www.ncei.noaa.gov/pub/data/ghcn/daily/",         geo_levels: [county],         vintage: "current",         license: PD}
+  - {id: bts_intl,          name: BTS international air segments,   url: "https://data.transportation.gov/resource/xgub-n9bw.json", geo_levels: [county],        vintage: "2024",            license: PD}
+  - {id: openflights,       name: OpenFlights airport coordinates,  url: "https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat", geo_levels: [county], vintage: "current", license: "ODbL, attribution required"}
   - {id: census_acs5,        name: ACS 5-year estimates,            url: "https://api.census.gov/data/2024/acs/acs5",             geo_levels: [county, place],  vintage: "2020-2024",       license: PD}
   - {id: census_bps,         name: Census Building Permits Survey,  url: "https://www.census.gov/construction/bps/",              geo_levels: [county, metro],  vintage: "2024",            license: PD}
 

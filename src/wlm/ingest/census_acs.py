@@ -104,3 +104,54 @@ def ingest(paths: list[Path], *, vintage: str, variable_map: dict[str, str] | No
                 )
 
     return emit(records, source_file=",".join(Path(p).name for p in paths), vintage=vintage)
+
+
+# --------------------------------------------------------------------- bulk summary file
+
+BULK_GEO_PREFIX = {"1600000US": "place", "0500000US": "county"}
+
+
+def parse_acs_bulk(path: Path, variable: str = "B01003_E001") -> dict[str, int]:
+    """Read a pipe-delimited ACS table-based summary file.
+
+    Used instead of the API, which now requires a registered key. GEO_IDs are
+    self-describing (`1600000US4232800` is a place), so the 92MB geography lookup file is
+    unnecessary.
+
+    This is the only source covering **census designated places** — PEP omits them — so it
+    is what keeps unincorporated communities in the universe.
+    """
+    out: dict[str, int] = {}
+    with Path(path).open(encoding="utf-8-sig", errors="replace") as fh:
+        header = fh.readline().rstrip("\n").split("|")
+        try:
+            col = header.index(variable)
+        except ValueError as exc:
+            raise ACSError(f"{path}: no column {variable!r} in {header}") from exc
+
+        for line in fh:
+            parts = line.rstrip("\n").split("|")
+            if len(parts) <= col:
+                continue
+            geo = parts[0]
+            for prefix in BULK_GEO_PREFIX:
+                if geo.startswith(prefix):
+                    geoid = geo[len(prefix):]
+                    break
+            else:
+                continue
+            if not is_in_scope(geoid):
+                continue
+            try:
+                value = int(float(parts[col]))
+            except ValueError:
+                continue
+            # ACS uses large negative sentinels (-555555555 and friends) for suppressed
+            # or not-applicable cells. Those are missing, not populations.
+            if value >= 0:
+                out[geoid] = value
+    return out
+
+
+def population_from_bulk(path: Path) -> dict[str, int]:
+    return parse_acs_bulk(path, "B01003_E001")

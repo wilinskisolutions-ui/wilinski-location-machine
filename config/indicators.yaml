@@ -65,9 +65,26 @@ indicators:
     notes: Affordability relative to local wages, not absolute price.
 
   # ---------------- climate_environment ----------------
-  - id: climate_temp_july_mean
+  # NOAA's annual/seasonal normals product is SEASONAL, not monthly. These are named for
+  # what the data actually is. Harrisburg reads winter 34.7F / summer 75.3F, which is the
+  # household's baseline to improve on.
+  - id: climate_temp_winter_mean
     domain: climate_environment
-    label: Mean July temperature
+    label: Mean winter temperature (Dec-Feb)
+    source: noaa_normals
+    geo_level: county
+    curve: ideal_band
+    curve_params: {lo: 40, hi: 62, shoulder: 12, shoulder_lo: 8}
+    unit: degF
+    provisional: true
+    notes: >
+      The household wants warmer than Harrisburg's 34.7F. Tighter lower shoulder because
+      colder is the thing being escaped; the upper shoulder is looser since a mild winter
+      is rarely a complaint.
+
+  - id: climate_temp_summer_mean
+    domain: climate_environment
+    label: Mean summer temperature (Jun-Aug)
     source: noaa_normals
     geo_level: county
     curve: ideal_band
@@ -75,14 +92,46 @@ indicators:
     unit: degF
     provisional: true
 
-  - id: climate_temp_january_mean
+  - id: climate_winter_low
     domain: climate_environment
-    label: Mean January temperature
+    label: Mean winter daily low (Dec-Feb)
     source: noaa_normals
     geo_level: county
     curve: ideal_band
-    curve_params: {lo: 28, hi: 48, shoulder: 10}
+    curve_params: {lo: 30, hi: 55, shoulder: 12, shoulder_lo: 8}
     unit: degF
+    provisional: true
+
+  - id: climate_summer_high
+    domain: climate_environment
+    label: Mean summer daily high (Jun-Aug)
+    source: noaa_normals
+    geo_level: county
+    curve: ideal_band
+    curve_params: {lo: 76, hi: 88, shoulder: 8}
+    unit: degF
+    provisional: true
+    notes: >
+      The counterweight to "warmer is better". Somewhere with a mild winter and a 100F
+      summer is not what the household is asking for.
+
+  - id: climate_heating_degree_days
+    domain: climate_environment
+    label: Annual heating degree days
+    source: noaa_normals
+    geo_level: county
+    curve: lower_better
+    unit: degree_days
+    notes: How much winter actually costs, in energy and in daily life. Harrisburg is 4,756.
+
+  - id: climate_cooling_degree_days
+    domain: climate_environment
+    label: Annual cooling degree days
+    source: noaa_normals
+    geo_level: county
+    curve: ideal_band
+    curve_params: {lo: 600, hi: 2200, shoulder: 900}
+    unit: degree_days
     provisional: true
 
   - id: climate_annual_precip
@@ -129,6 +178,47 @@ indicators:
     geo_level: county
     curve: lower_better
     unit: score
+
+  # Added because the household wants somewhere warmer. Heat and drought are what "warm"
+  # costs inland, exactly as hurricane risk is what it costs on a coast.
+  - id: hazard_nri_heatwave
+    domain: climate_environment
+    label: FEMA NRI heat wave risk
+    source: fema_nri
+    geo_level: county
+    curve: lower_better
+    unit: score
+
+  - id: hazard_nri_drought
+    domain: climate_environment
+    label: FEMA NRI drought risk
+    source: fema_nri
+    geo_level: county
+    curve: lower_better
+    unit: score
+
+  - id: hazard_nri_tornado
+    domain: climate_environment
+    label: FEMA NRI tornado risk
+    source: fema_nri
+    geo_level: county
+    curve: lower_better
+    unit: score
+
+  - id: hazard_fatality_risk_per100k
+    domain: climate_environment
+    label: Expected annual hazard fatalities per 100,000 residents
+    source: fema_nri
+    geo_level: county
+    curve: lower_better
+    unit: per100k
+    notes: >
+      Summed expected annual loss of life across hazards, divided by population. The
+      indicators above are FEMA's official percentiles, which rank expected annual *loss* —
+      and loss scales with how much property a county contains, so Los Angeles scores 100
+      partly for being Los Angeles. Used alone that would penalise populous places for
+      having a lot to lose, working against this household's amenity preference for reasons
+      unrelated to their safety. This one is exposure-normalised: the risk to a person.
 
   - id: env_pm25_annual
     domain: climate_environment
@@ -194,13 +284,32 @@ indicators:
     curve: higher_better
     unit: trips/person/year
 
-  - id: form_airport_destinations
+  # Built to TEST the household's assumption that European access requires the east coast,
+  # rather than to encode it. See docs/data-sources.md.
+  - id: air_europe_destinations
     domain: urban_form
-    label: Nonstop destinations from nearest major airport
-    source: bts_t100
-    geo_level: metro
+    label: Nonstop European destinations from the nearest transatlantic airport
+    source: bts_intl
+    geo_level: county
     curve: higher_better
     unit: count
+
+  - id: air_europe_hub_distance
+    domain: urban_form
+    label: Distance to the nearest airport with European nonstops
+    source: bts_intl
+    geo_level: county
+    curve: lower_better
+    unit: miles
+
+  - id: air_europe_passengers
+    domain: urban_form
+    label: Annual transatlantic passengers at the nearest such airport
+    source: bts_intl
+    geo_level: county
+    curve: higher_better
+    unit: passengers/year
+    notes: Volume proxies for fare competition — more traffic generally means cheaper seats.
 
   - id: form_broadband_gigabit
     domain: urban_form
@@ -415,24 +524,55 @@ indicators:
     curve: higher_better
     unit: share
 
-  - id: rec_amenity_density
+  # Amenity density comes from County Business Patterns, not OpenStreetMap: Overpass and
+  # its mirrors are egress-blocked. CBP is the better source anyway — authoritative
+  # establishment counts, complete national coverage, no rate limits, and it covers small
+  # counties as thoroughly as large ones, which is a direct countermeasure to coverage bias.
+  #
+  # "Things to do" is one of the two things pushing this household out of Harrisburg, so
+  # this group is deliberately detailed rather than a single blended score.
+  - id: amen_food_drink_per10k
     domain: recreation_lifestyle
-    label: Everyday amenities per 10,000 residents
-    source: osm_overpass
-    geo_level: place
-    curve: higher_better
-    unit: per10k
-    notes: >
-      Groceries, gyms, libraries, cafes, trailheads, clinics. OSM covers small places as
-      thoroughly as large ones, making this a direct countermeasure to coverage bias.
-
-  - id: rec_trail_km_per_capita
-    domain: recreation_lifestyle
-    label: Mapped trail kilometres per capita
-    source: osm_overpass
+    label: Restaurants and bars per 10,000 residents
+    source: census_cbp
     geo_level: county
     curve: higher_better
-    unit: km/1000
+    unit: per10k
+    notes: NAICS 722. Dauphin County has 610 establishments, the household's baseline.
+
+  - id: amen_arts_rec_per10k
+    domain: recreation_lifestyle
+    label: Arts, entertainment and recreation per 10,000 residents
+    source: census_cbp
+    geo_level: county
+    curve: higher_better
+    unit: per10k
+    notes: NAICS 71 — venues, museums, sports, parks and recreation businesses.
+
+  - id: amen_grocery_per10k
+    domain: recreation_lifestyle
+    label: Food and beverage stores per 10,000 residents
+    source: census_cbp
+    geo_level: county
+    curve: higher_better
+    unit: per10k
+
+  - id: amen_fitness_per10k
+    domain: recreation_lifestyle
+    label: Fitness and recreational sports centres per 10,000 residents
+    source: census_cbp
+    geo_level: county
+    curve: higher_better
+    unit: per10k
+
+  - id: amen_establishments_per10k
+    domain: recreation_lifestyle
+    label: All business establishments per 10,000 residents
+    source: census_cbp
+    geo_level: county
+    curve: higher_better
+    unit: per10k
+    notes: Overall commercial density — the general "is there anything here" measure.
 
   # ---------------- community_culture ----------------
   - id: comm_median_age

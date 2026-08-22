@@ -189,3 +189,154 @@ class PlaceCountyCrosswalk:
                 }
             )
         return cls.from_rows(rows)
+
+
+# ---------------------------------------------------------------- real-file constructors
+
+COUNTY_SEPARATOR = "~~~"
+
+
+def county_name_index(rows: list[dict[str, str]]) -> dict[tuple[str, str], str]:
+    """(USPS, upper-cased county name) -> county GEOID, built from the Gazetteer.
+
+    Needed because `national_place2020.txt` names a place's counties rather than coding
+    them. Names are matched within a state, since county names repeat across states.
+    """
+    index: dict[tuple[str, str], str] = {}
+    for row in rows:
+        geoid = norm_fips(row["GEOID"], 5)
+        if not is_in_scope(geoid):
+            continue
+        index[(row.get("USPS", ""), row.get("NAME", "").strip().upper())] = geoid
+    return index
+
+
+def parse_place_codes(
+    path: Path, index: dict[tuple[str, str], str]
+) -> tuple[list[dict], dict[str, str], list[str]]:
+    """Read `national_place2020.txt`.
+
+    Returns (crosswalk rows, place_geoid -> 'cdp'|'incorporated', unmatched county names).
+
+    Multiple counties are separated by `~~~`. Rows carry weight 0, meaning "no population
+    split known" — `PlaceCountyCrosswalk.from_rows` then divides evenly. PEP weights
+    override these wherever they exist.
+    """
+    rows: list[dict] = []
+    classes: dict[str, str] = {}
+    unmatched: list[str] = []
+
+    text = Path(path).read_text(encoding="utf-8-sig", errors="replace")
+    lines = text.splitlines()
+    header = [h.strip().upper() for h in lines[0].split("|")]
+    col = {name: i for i, name in enumerate(header)}
+
+    for line in lines[1:]:
+        parts = line.split("|")
+        if len(parts) < len(header):
+            continue
+        usps = parts[col["STATE"]].strip()
+        geoid = place_geoid(parts[col["STATEFP"]], parts[col["PLACEFP"]])
+        if not is_in_scope(geoid):
+            continue
+
+        classes[geoid] = (
+            "cdp" if "DESIGNATED" in parts[col["TYPE"]].upper() else "incorporated"
+        )
+
+        for name in parts[col["COUNTIES"]].split(COUNTY_SEPARATOR):
+            name = name.strip()
+            if not name:
+                continue
+            county = index.get((usps, name.upper()))
+            if county is None:
+                unmatched.append(f"{usps}/{name}")
+                continue
+            rows.append({"place_geoid": geoid, "county_geoid": county, "weight": 0})
+
+    return rows, classes, unmatched
+
+
+def build_crosswalk(
+    place_code_rows: list[dict], pep_weight_rows: list[dict]
+) -> tuple[PlaceCountyCrosswalk, dict[str, int]]:
+    """Combine both crosswalk sources, preferring real population weights.
+
+    PEP supplies place x county population for incorporated places. Census designated
+    places are absent from PEP, so they fall back to an even split across their listed
+    counties — recorded in the returned stats rather than hidden, since an even split is a
+    guess and roughly 1,300 places span more than one county.
+    """
+    weighted_places = {r["place_geoid"] for r in pep_weight_rows}
+    combined = list(pep_weight_rows)
+    combined += [r for r in place_code_rows if r["place_geoid"] not in weighted_places]
+
+    stats = {
+        "places_with_population_weights": len(weighted_places),
+        "places_evenly_split": len(
+            {r["place_geoid"] for r in place_code_rows if r["place_geoid"] not in weighted_places}
+        ),
+    }
+    return PlaceCountyCrosswalk.from_rows(combined), stats
+
+
+# ------------------------------------------------------------------- geographic fallback
+
+
+def haversine_miles(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Great-circle distance in statute miles."""
+    import math
+
+    r = 3958.7613
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp = p2 - p1
+    dl = math.radians(lon2 - lon1)
+    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 2 * r * math.asin(math.sqrt(a))
+
+
+def nearest_county(lat: float, lon: float, centroids: dict[str, tuple[float, float]],
+                   same_state: str | None = None) -> str | None:
+    """County whose centroid is closest to a point, optionally constrained to one state.
+
+    A fallback for places whose county could not be matched by name. The live case is
+    **Connecticut**, which replaced its eight counties with nine planning regions for
+    Census purposes in 2022: the 2020 place-codes file still names the old counties while
+    the 2024 Gazetteer carries the new regions, so 216 name lookups fail.
+
+    Implemented generally rather than as a Connecticut special case, because the same thing
+    will happen again the next time a state redraws. Centroid distance is approximate — for
+    a large county a place's centroid may be nearer a neighbour's centre — so its use is
+    counted in the build report rather than passing silently.
+    """
+    best, best_d = None, float("inf")
+    for geoid, (clat, clon) in centroids.items():
+        if same_state and not geoid.startswith(same_state):
+            continue
+        d = haversine_miles(lat, lon, clat, clon)
+        if d < best_d:
+            best, best_d = geoid, d
+    return best
+
+
+def read_population_centroids(path: Path) -> dict[str, tuple[float, float]]:
+    """County GEOID -> population-weighted centroid (lat, lon).
+
+    A county's geometric centroid can sit far from where anyone lives — empty uplands,
+    desert, water. For anything people actually experience (climate, air, travel time)
+    the population-weighted centre is the honest reading. Dauphin County's geometric
+    centroid is 7.5 miles north of its population centroid, biasing its winter temperature
+    about 3F colder than Harrisburg itself.
+    """
+    import csv
+
+    out: dict[str, tuple[float, float]] = {}
+    text = Path(path).read_text(encoding="utf-8-sig", errors="replace")
+    for row in csv.DictReader(text.splitlines()):
+        row = {(k or "").strip().upper(): (v or "").strip() for k, v in row.items()}
+        try:
+            geoid = county_geoid(row["STATEFP"], row["COUNTYFP"])
+            out[geoid] = (float(row["LATITUDE"]), float(row["LONGITUDE"]))
+        except (KeyError, ValueError, GeoError):
+            continue
+    return out

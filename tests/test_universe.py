@@ -98,19 +98,26 @@ class TestUniverseBuild(unittest.TestCase):
         # Millford has no ACS row. It must be reported, not treated as zero-population.
         self.assertEqual(self.report.places_no_population, 1)
 
-    def test_place_without_county_match_is_excluded_and_warned(self):
-        self.assertEqual(self.report.places_unmatched_county, 1)  # Nowhere city
+    def test_name_lookup_failure_falls_back_to_nearest_centroid(self):
+        # Nowhere city has no crosswalk entry but does have coordinates. Dropping it would
+        # be worse than an approximate county, so it is rescued -- and counted, never
+        # silently. Connecticut's 2022 switch to planning regions is the real case.
+        self.assertEqual(self.report.places_county_by_centroid, 1)
+
+    def test_place_that_cannot_be_placed_at_all_is_excluded_and_warned(self):
+        # Voidtown has neither a crosswalk entry nor coordinates: nothing can locate it.
+        self.assertEqual(self.report.places_unmatched_county, 1)
         self.assertTrue(any("no county match" in w for w in self.report.warnings))
 
     def test_cdps_are_included(self):
         # Excluding unincorporated communities would be a systematic coverage bias against
         # exactly the overlooked places this project exists to surface.
         self.assertEqual(self.report.cdp, 2)
-        self.assertEqual(self.report.incorporated, 6)
+        self.assertEqual(self.report.incorporated, 7)  # includes centroid-rescued Nowhere
 
     def test_expected_universe_size(self):
-        self.assertEqual(self.report.places_kept, 8)
-        self.assertEqual(self.universe.height, 18)
+        self.assertEqual(self.report.places_kept, 9)
+        self.assertEqual(self.universe.height, 19)
 
     def test_geo_ids_are_unique_and_correctly_shaped(self):
         self.assertEqual(self.universe["geo_id"].n_unique(), self.universe.height)
