@@ -171,11 +171,39 @@ class TestScoringMechanics(unittest.TestCase):
         self.assertTrue((result["weight_covered"] >= 0.8).all())
 
     def test_dataless_domain_raises_a_named_warning(self):
+        """A domain carrying weight but no data must say so, loudly.
+
+        This used to weight `education` and rely on it being empty. It is not empty any
+        more, and a test whose premise has quietly become false is worse than no test: it
+        passed for years describing a condition that no longer existed. So the condition is
+        now constructed rather than borrowed — drop a domain's indicators from the frame and
+        assert the warning names it.
+        """
+        import polars as pl
+
+        target = "education"
+        dropped = {i for i, e in REGISTRY.items() if e["domain"] == target}
+        thinned = self.features.filter(~pl.col("indicator_id").is_in(dropped))
+
+        _, report = score(
+            thinned, REGISTRY,
+            {"domain_weights": {target: 50.0, "cost_housing": 50.0}},
+        )
+        self.assertTrue(
+            any(target in w and "cannot affect" in w for w in report.warnings),
+            f"a weighted domain with no data went unreported: {report.warnings}",
+        )
+
+    def test_a_domain_that_does_have_data_raises_no_such_warning(self):
+        """The other half, without which the check above cannot fail meaningfully."""
         _, report = score(
             self.features, REGISTRY,
             {"domain_weights": {"education": 50.0, "cost_housing": 50.0}},
         )
-        self.assertTrue(any("education" in w and "cannot affect" in w for w in report.warnings))
+        self.assertFalse(
+            [w for w in report.warnings if "education" in w and "cannot affect" in w],
+            "education has data now; it should not be reported as empty",
+        )
 
     def test_knockouts_remove_places_and_report_the_cost(self):
         result, report = score(self.features, REGISTRY, self.profile)

@@ -478,6 +478,16 @@ unmapped answer raises rather than being skipped.
 to read it, underneath "correlation unavailable" — presenting rank noise as a finding. It
 now suppresses the table and says which of the two reasons applies.
 
+**And a ninth, of a kind worth naming separately: a test whose premise had quietly become
+false.** `test_dataless_domain_raises_a_named_warning` weighted `education` and asserted the
+"cannot affect this ranking" warning fired. It passed for as long as education had no data,
+and the moment education was filled it started failing — correctly. The test was borrowing
+a condition from the world rather than constructing one, so it had been describing a state
+of affairs rather than guarding a behaviour. It now drops a domain's indicators from the
+frame deliberately, and a companion test asserts the warning does *not* fire for a domain
+that does have data — without which the first check cannot fail meaningfully. **Filling a
+gap can break a test that was only ever true by accident, and that failure is information.**
+
 **The phone.** `make questionnaire` still runs locally and is unchanged. Alongside it,
 `wlm.questionnaire.artifact` bakes the 56 questions into a self-contained page, **one per
 person** — that separation is Principle 8, since with the artifact capability a page's
