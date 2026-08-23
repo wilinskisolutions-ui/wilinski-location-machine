@@ -108,6 +108,14 @@ DOWNLOADS: dict[str, list[str]] = {
     "nhtsa_fars": [
         "https://static.nhtsa.gov/nhtsa/downloads/FARS/2023/National/FARS2023NationalCSV.zip"
     ],
+    # Diagnostic only, and deliberately so: the hype index measures how much attention a
+    # place is already getting, so that a ranking can be checked against it. It is never
+    # a scoring input — penalising popularity would be its own bias, and the goal is to
+    # find good places the internet ignores, not to prefer obscurity for its own sake.
+    "irs_migration": [
+        "https://www.irs.gov/pub/irs-soi/countyinflow2122.csv",
+        "https://www.irs.gov/pub/irs-soi/countyoutflow2122.csv",
+    ],
 }
 
 # Sources fetched through a query API rather than a static file. Handled by their own
@@ -404,6 +412,132 @@ def stage_demo(args) -> int:
         return 1
 
 
+def _profiles_or_placeholder(args) -> list[dict]:
+    """The elicited profiles, or the placeholder weights with that said out loud.
+
+    Emil and Winsor have not answered yet. Scoring against the placeholders is useful — it
+    is how the machinery gets exercised and how they see the format before committing an
+    hour each — but a ranking built on numbers nobody chose must never be mistaken for a
+    ranking built on their preferences.
+    """
+    import yaml
+
+    from wlm.paths import CONFIG, ROOT
+    from wlm.profile import load_profile
+    from wlm.questionnaire.session import REAL_PEOPLE
+
+    found = []
+    for person in REAL_PEOPLE:
+        path = ROOT / "profiles" / f"{person}.yaml"
+        if path.exists():
+            found.append(load_profile(path))
+    if found:
+        return found
+
+    domains = yaml.safe_load((CONFIG / "domains.yaml").read_text())["domains"]
+    print(
+        "no elicited profile found in profiles/ — using the placeholder weights from\n"
+        "  config/domains.yaml. These are numbers nobody chose. Run `make questionnaire`\n"
+        "  before treating any of this as an answer.\n"
+    )
+    return [
+        {
+            "person": "placeholder",
+            "method": "PLACEHOLDER weights from config/domains.yaml — not elicited",
+            "domain_weights": {
+                d["id"]: float(d["default_weight"])
+                for d in domains
+                if d.get("scoring") and d["default_weight"] > 0
+            },
+        }
+    ]
+
+
+def stage_score(args) -> int:
+    """Rank counties, then places inside the winners, and band every rank."""
+    import polars as pl
+
+    from wlm.paths import FEATURES, PROCESSED, UNIVERSE
+    from wlm.report.build import _registry
+    from wlm.scoring.engine import apply_knockouts, sensitivity, two_stage
+
+    features = pl.read_parquet(FEATURES)
+    universe = pl.read_parquet(UNIVERSE)
+    registry = _registry()
+    names = dict(universe.select(["geo_id", "name"]).iter_rows())
+
+    for profile in _profiles_or_placeholder(args):
+        person = profile.get("person", "household")
+        counties, places, report = two_stage(features, universe, registry, profile)
+        counties = apply_knockouts(
+            counties, features, profile.get("knockouts"), report, names
+        )
+
+        bands = sensitivity(features.filter(pl.col("geo_level") == "county"), registry, profile)
+        counties = counties.join(bands, on="geo_id", how="left")
+
+        PROCESSED.mkdir(parents=True, exist_ok=True)
+        counties.write_parquet(PROCESSED / f"scores-county-{person}.parquet")
+        places.write_parquet(PROCESSED / f"scores-place-{person}.parquet")
+
+        print(f"{person}: {counties.height:,} counties, {places.height:,} places scored")
+        for rule in report.knockouts:
+            print(f"  knockout {rule['indicator']} {rule['op']} {rule['value']:,.0f} "
+                  f"removed {rule['removed']:,} (best: {rule['best_removed']})")
+        for warning in report.warnings:
+            print(f"  warning: {warning}")
+    return 0
+
+
+def stage_report(args) -> int:
+    """Render the ranking — refusing any rank that arrives without its band."""
+    from wlm.report.build import UnbandedRankingError, build
+
+    for profile in _profiles_or_placeholder(args):
+        try:
+            path, report = build(profile)
+        except UnbandedRankingError as exc:
+            print(f"refused to write a report: {exc}")
+            return 1
+        flips = report.counties.coin_flips + report.places.coin_flips
+        print(f"{report.person}: wrote {path}")
+        print(f"  {len(report.counties.rows)} counties, {len(report.places.rows)} towns, "
+              f"{flips} labelled coin flips")
+        for warning in report.warnings[:6]:
+            print(f"  warning: {warning}")
+    return 0
+
+
+def stage_diagnostics(args) -> int:
+    """The anti-bias checks. None of these feeds a score; all of them judge one."""
+    import polars as pl
+
+    from wlm.diagnostics import blind, coverage, hype, political
+    from wlm.paths import OUTPUT, PROCESSED
+
+    scores_files = sorted(PROCESSED.glob("scores-county-*.parquet"))
+    if not scores_files:
+        print("diagnostics: run `make score` first — there is nothing to check yet.")
+        return 1
+    scores = pl.read_parquet(scores_files[0])
+
+    coverage.build()
+    print(f"  coverage   -> {OUTPUT / 'coverage.md'}")
+
+    hype.build(scores)
+    print(f"  hype       -> {OUTPUT / 'hype.md'}")
+
+    blind.build(list(scores.head(12)["geo_id"]))
+    print(f"  blind      -> {OUTPUT / 'blind.md'} (key held separately)")
+
+    for profile in _profiles_or_placeholder(args):
+        political.build(profile)
+        print(f"  political  -> {OUTPUT / 'political.md'}")
+        break
+
+    return 0
+
+
 def stage_pending(name: str, phase: int, description: str):
     def run(args) -> int:
         print(f"stage '{name}' is not implemented yet — scheduled for Phase {phase}.")
@@ -418,13 +552,9 @@ STAGES = {
     "universe": stage_universe,
     "features": stage_features,
     "demo": stage_demo,
-    "score": stage_pending(
-        "score", 4, "apply curves, weights, aggregation and knockouts -> scores.parquet"
-    ),
-    "diagnostics": stage_pending(
-        "diagnostics", 4, "hype residual, coverage, sensitivity, political with/without"
-    ),
-    "report": stage_pending("report", 4, "ranked HTML with per-place explanations"),
+    "score": stage_score,
+    "diagnostics": stage_diagnostics,
+    "report": stage_report,
 }
 
 

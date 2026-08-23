@@ -18,6 +18,7 @@ from pathlib import Path
 import polars as pl
 import yaml
 
+from wlm.units import fmt as unit_fmt
 from wlm.baseline import BASELINE_COUNTY, BASELINE_LABEL, BASELINE_PLACE
 from wlm.paths import CONFIG, PROCESSED, ROOT
 
@@ -29,36 +30,9 @@ ATTRIBUTES_PER_TASK = 5
 
 
 def _fmt(value: float | None, unit: str | None) -> str:
-    if value is None:
-        return "—"
-    u = (unit or "").lower()
-    if u == "usd":
-        return f"${value/1000:,.0f}k" if value >= 10_000 else f"${value:,.0f}"
-    if u == "usd/month":
-        return f"${value:,.0f}/mo"
-    if u == "degf":
-        return f"{value:.0f}°F"
-    if u == "inches":
-        return f'{value:.0f}"'
-    if u == "miles":
-        return f"{value:.0f} mi"
-    if u == "minutes":
-        return f"{value:.0f} min"
-    if u == "people":
-        return f"{value:,.0f}"
-    if u == "per10k":
-        return f"{value:.1f} per 10k"
-    if u == "per100k":
-        return f"{value:.1f} per 100k"
-    if u == "years":
-        return f"{value:.1f} yrs"
-    if u == "share":
-        return f"{value*100:.0f}%"
-    if u == "count":
-        return f"{value:.0f}"
-    if u == "ug/m3":
-        return f"{value:.1f} µg/m³"
-    return f"{value:,.1f}"
+    """Delegates to wlm.units so the questionnaire, the report and the blind export cannot
+    drift apart on what a unit means."""
+    return unit_fmt(value, unit)
 
 
 def load_bank(path: Path = BANK) -> dict:

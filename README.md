@@ -43,7 +43,7 @@ that contradicts it. Then **[`CONTEXT.md`](CONTEXT.md)** for current state.
 
 ```bash
 make validate   # check config registries against the GOAL.md principles
-make test       # run the test suite (90 tests, no network needed)
+make test       # run the test suite (no network needed)
 make demo       # run the whole chain on synthetic fixtures
 make data       # download every source (~250MB) into data/raw with checksums
 make universe   # build the candidate universe
@@ -51,6 +51,10 @@ make features   # ingest everything and compute percentiles
 make coverage   # report what has data and what does not, with reasons
 make questionnaire PERSON=practice   # try the questionnaire safely
 make calibrate  # check elicited weights against places they already know
+make score      # rank counties, then towns inside the winners, with rank bands
+make diagnostics # hype residual, blind export, political with/without
+make report     # the readable ranking - refuses any rank without its band
+make audit      # check the system against the ten principles in GOAL.md
 ```
 
 `validate` needs PyYAML alone. The pipeline stages need `pip install -e ".[pipeline]"`.
@@ -61,19 +65,22 @@ synthetic input.
 
 ## Status
 
-**Phase 2 — Ingest: complete.** A real universe of **9,885 candidates** (3,144 counties,
-6,741 places) with **44 of 64 indicators populated** from live federal data. Every remaining
-gap has a named reason in `output/coverage.md`.
+**Phase 4 — Engine: built.** A real universe of **9,885 candidates** (3,144 counties, 6,741
+places) with **46 of 65 indicators populated** from live federal data. The chain runs end to
+end: scoring, rank bands, the anti-bias diagnostics, and a readable report. `make audit`
+reports **10 of 10 principles passing**. Every remaining data gap has a named reason in
+`output/coverage.md`.
+
+**What is still missing is the household, not the machinery.** Every weight in the system is
+a placeholder nobody chose, and the pipeline says so at every stage that uses one.
 
 | Phase | Deliverable | Status |
 |---|---|---|
 | 0 — Charter | Principles, methodology, registries, scaffolding | done |
 | 1 — Universe | Fixed candidate set, pipeline proven on 3-4 sources | done |
-| 2 — Ingest | 44 of 64 indicators on real data, coverage report | done |
+| 2 — Ingest | 46 of 65 indicators on real data, coverage report | done |
 | 3 — Questionnaire | Local instrument, elicitation, calibration | **built, awaiting answers** |
-| 2 — Ingest | 40-60 indicators, coverage report | |
-| 3 — Questionnaire | Question bank, elicited weights, calibration set | |
-| 4 — Engine | Scoring, sensitivity, anti-bias diagnostics, report | |
+| 4 — Engine | Scoring, rank bands, anti-bias diagnostics, report | built, running on placeholders |
 | 5 — Shortlist | Top ~25 deep dive, blind evaluation | |
 | 6 — Field | Visit plan and final decision | |
 

@@ -375,6 +375,53 @@ stage 2 now skips past them and says how many it skipped.
 principles passing — Principle 9 remains PARTIAL until sensitivity bands are emitted
 alongside a ranking, which is now fast enough to actually do.
 
+### 2026-08-23 — Third sweep: the browser, and the worst bug found so far
+
+Driving the questionnaire in a real browser for the first time — Chromium via Playwright,
+18 tests over the path Emil and Winsor will actually click — plus building the report and
+diagnostics layers, turned up six bugs. Two of them broke charter principles outright.
+
+**1. Principle 10 was broken in both directions, and the audit said PASS.**
+The sensitive domain sits in the 100-point budget question like any other, so points
+allocated to it flowed straight into the ranking **with no opt-in at all**. Meanwhile
+opting in did nothing, because the answer was stored as option labels (`"Political
+climate"`) that no code ever read. `make audit` reported the principle as passing
+throughout, because the check only inspected the default weight in `config/domains.yaml` —
+a check that could not fail on real behaviour.
+
+Fixed structurally, not by remembering: `bank.yaml` declares which indicator each option
+switches on (an unmapped option now raises); `build_profile` zeroes the domain weight and
+redistributes it with a named note unless something was opted into; and `engine.score`
+drops any sensitive indicator absent from that list. A zero weight would not have sufficed
+— the within-domain floor keeps every indicator at 0.05, so silence has to mean absence.
+The audit check now exercises the gate.
+
+**2. 280 counties were scoring as the safest places in America because their data was
+withheld.** CDC publishes suppressed death rates as the numeric sentinel **-999**, not as a
+blank. `float("-999")` succeeded, so -999 entered the pipeline as a real rate on
+`safety_firearm_death_rate` (180 counties) and `safety_overdose_death_rate` (100). Both are
+`lower_better`. Missing data did not count as zero — **it counted as perfection**, which is
+Principle 6 failing in the most damaging direction available.
+
+Fixed at `ingest.base.emit`, the one gate every source passes through, rather than only in
+the module that happened to hit it: a negative value on a unit that cannot be negative is a
+publisher's flag, not a measurement. `degF`, `index` and `score` are excluded from the rule
+— Fairbanks really is below zero. Rebuilt features: nulls rose 2,109 → 2,389, exactly the
+280 rejected, and zero impossible negatives remain.
+
+**The other four:**
+
+| # | Bug | Consequence |
+|---|---|---|
+| 3 | A blank optional text box was recorded as `""` | A skipped question was indistinguishable from an answered one; clearing a box on the way back left the old value in place. |
+| 4 | Zero scoreable candidates raised `ColumnNotFoundError` from polars | An opaque library error where the real answer is "no candidate has data in any weighted domain". Same pattern fixed in `sensitivity()`. |
+| 5 | An unparseable knockout was skipped in silence | A deal-breaker could appear to be applied when it never ran. |
+| 6 | Three copies of the unit formatter disagreed | Unemployment (0.003–0.17 in this data) was shown to Emil as **"0.0"** — a real figure rendered meaningless on the page meant to decide a move. Now one `wlm.units.fmt`, and four climate ids in the blind export were simply wrong, so the profiles carried no climate at all. |
+
+**Method note.** Bugs 1, 3 and 6 were found by driving the real UI; bug 2 by auditing units
+against their actual data ranges. Neither is something reading the code would have caught,
+and both sweeps before this one found bugs at a similar rate. The rate is not yet falling.
+
 ---
 
 ## Data inventory

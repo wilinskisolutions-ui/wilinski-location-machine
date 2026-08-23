@@ -253,6 +253,36 @@ def joint(a: pl.DataFrame, b: pl.DataFrame) -> pl.DataFrame:
     ).sort("score_joint", descending=True)
 
 
+def places_with_county_context(
+    features: pl.DataFrame, place_rows: pl.DataFrame, winners: set[str]
+) -> pl.DataFrame:
+    """Every place in the winning counties, carrying its county's numbers as well as its own.
+
+    A place inherits its county's context and adds its own local detail
+    (docs/methodology.md section 1). Scored on place-level indicators alone it would be
+    judged on about seven things, none of them climate, hazard, jobs or health — which is
+    where nearly all the weight sits, and the stage returned nothing at all.
+
+    Separated out because the sensitivity run has to jitter exactly the frame the ranking
+    came from. Banding places on their seven local indicators while ranking them on forty
+    would produce an honest-looking band for a different question.
+    """
+    own = features.filter(
+        (pl.col("geo_level") == "place") & pl.col("geo_id").is_in(set(place_rows["geo_id"]))
+    )
+    county_context = (
+        features.filter((pl.col("geo_level") == "county") & pl.col("geo_id").is_in(winners))
+        .rename({"geo_id": "county_geoid"})
+        .join(place_rows, on="county_geoid", how="inner")
+        .drop("county_geoid")
+        .with_columns(pl.lit("place").alias("geo_level"))
+    )
+    return pl.concat(
+        [own.select(sorted(own.columns)), county_context.select(sorted(own.columns))],
+        how="vertical",
+    )
+
+
 def two_stage(
     features: pl.DataFrame,
     universe: pl.DataFrame,
@@ -297,25 +327,7 @@ def two_stage(
         report.warnings.append("no places inside the winning counties")
         return county_scores, pl.DataFrame(), report
 
-    # A place inherits its county's context and adds its own local detail
-    # (docs/methodology.md section 1). Scored on place-level indicators alone it would be
-    # judged on about seven things, none of them climate, hazard, jobs or health — which is
-    # where nearly all the weight sits.
-    own = features.filter(
-        (pl.col("geo_level") == "place") & pl.col("geo_id").is_in(set(place_rows["geo_id"]))
-    )
-    county_context = (
-        features.filter((pl.col("geo_level") == "county") & pl.col("geo_id").is_in(winners))
-        .rename({"geo_id": "county_geoid"})
-        .join(place_rows, on="county_geoid", how="inner")
-        .drop("county_geoid")
-        .with_columns(pl.lit("place").alias("geo_level"))
-    )
-    combined = pl.concat(
-        [own.select(sorted(own.columns)), county_context.select(sorted(own.columns))],
-        how="vertical",
-    )
-
+    combined = places_with_county_context(features, place_rows, winners)
     place_scores, place_report = score(combined, registry, profile)
     report.warnings.extend(place_report.warnings)
     return county_scores, place_scores, report
@@ -377,6 +389,15 @@ def sensitivity(
                 "rank_p05": int(np.percentile(arr, 5)),
                 "rank_p95": int(np.percentile(arr, 95)),
                 "rank_spread": int(np.percentile(arr, 95) - np.percentile(arr, 5)),
+            }
+        )
+    if not rows:
+        # Every draw scored nothing. Returning an empty frame with the right columns lets
+        # the caller's band check say "no band" rather than polars saying "no column".
+        return pl.DataFrame(
+            schema={
+                "geo_id": pl.Utf8, "rank_median": pl.Int64,
+                "rank_p05": pl.Int64, "rank_p95": pl.Int64, "rank_spread": pl.Int64,
             }
         )
     return pl.DataFrame(rows).sort("rank_median")

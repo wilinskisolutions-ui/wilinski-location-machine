@@ -33,6 +33,22 @@ LONG_SCHEMA = {
 # looks like it has missing data when it actually has a typo.
 GEOID_WIDTH = {"state": 2, "county": 5, "place": 7, "metro": 5, "district": 7}
 
+# Units that cannot be negative in reality. A negative value on one of these is a sentinel
+# from the publisher, not a measurement.
+#
+# CDC publishes withheld death rates as -999. Because both mortality indicators are
+# `lower_better`, those 280 counties scored as the safest places in America — missing data
+# counting not as zero but as perfection. Rejecting it here rather than in the one module
+# that happened to hit it means the next publisher's sentinel is caught by default.
+#
+# degF, index and score are deliberately absent: Fairbanks really is below zero in winter,
+# and an index or a margin can legitimately run negative.
+NON_NEGATIVE_UNITS = {
+    "usd", "usd/month", "people", "people/sqmi", "count", "per10k", "per100k",
+    "years", "share", "percent", "ratio", "inches", "miles", "minutes",
+    "ug/m3", "degree_days", "passengers/year",
+}
+
 
 class IngestError(ValueError):
     """An ingest module emitted something the registry does not allow."""
@@ -68,6 +84,7 @@ def emit(
     unknown: set[str] = set()
     mismatched: list[str] = []
     bad_width: list[str] = []
+    sentinels: dict[str, int] = {}
     rows: list[dict] = []
 
     for rec in records:
@@ -95,6 +112,11 @@ def emit(
                 value = float(value)
             except (TypeError, ValueError):
                 value = None  # unparseable is missing, not zero
+            else:
+                if value < 0 and str(entry.get("unit", "")).lower() in NON_NEGATIVE_UNITS:
+                    sentinels.setdefault(iid, 0)
+                    sentinels[iid] += 1
+                    value = None  # a publisher's flag, not a measurement
 
         rows.append(
             {
@@ -121,7 +143,11 @@ def emit(
     if problems:
         raise IngestError("\n\n".join(problems))
 
-    return pl.DataFrame(rows, schema=LONG_SCHEMA)
+    frame = pl.DataFrame(rows, schema=LONG_SCHEMA)
+    # Attached rather than printed: the caller decides how to surface it, but it is never
+    # simply lost. Absence has to be visible (Principle 6).
+    frame.rejected_sentinels = sentinels  # type: ignore[attr-defined]
+    return frame
 
 
 def write_interim(df: pl.DataFrame, source_id: str, out_dir: Path) -> Path:

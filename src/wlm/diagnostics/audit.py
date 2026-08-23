@@ -103,10 +103,66 @@ def check() -> list[tuple[str, str, str]]:
     ))
 
     # 9 — sensitivity band
+    #
+    # Checked by trying to publish a ranking without one. A column that happens to be
+    # present today proves nothing about tomorrow; a refusal that fires does.
+    band_findings, band_ok = [], True
+    try:
+        from wlm.report.build import UnbandedRankingError, require_bands
+
+        try:
+            require_bands(
+                pl.DataFrame({"geo_id": ["42043"], "rank": [1], "score": [0.5]}),
+                what="audit probe",
+            )
+            band_ok = False
+            band_findings.append("an unbanded ranking was accepted for publication")
+        except UnbandedRankingError:
+            pass
+
+        try:
+            require_bands(
+                pl.DataFrame(
+                    {"geo_id": ["42043"], "rank": [1], "rank_p05": [None], "rank_p95": [None]}
+                ),
+                what="audit probe",
+            )
+            band_ok = False
+            band_findings.append("a ranking with null bands was accepted")
+        except UnbandedRankingError:
+            pass
+
+        reports = sorted(OUTPUT.glob("report-*.json"))
+        if reports:
+            import json as _json
+
+            published = _json.loads(reports[0].read_text())
+            rows = (published.get("counties") or []) + (published.get("places") or [])
+            missing = [
+                r.get("name") for r in rows
+                if r.get("rank_p05") is None or r.get("rank_p95") is None
+            ]
+            if missing:
+                band_ok = False
+                band_findings.append(f"{len(missing)} published rows carry no band")
+            evidence_rows = f"{len(rows)} published rows, every one banded"
+        else:
+            evidence_rows = "no report built yet; the guard is in place for when one is"
+    except Exception as exc:
+        band_ok = False
+        evidence_rows = ""
+        band_findings.append(f"guard could not be verified: {exc}")
+
     out.append((
-        "9. Every ranking ships with a sensitivity band", "PARTIAL",
-        "scoring.engine.sensitivity() computes Dirichlet-jittered rank bands, but no report "
-        "yet emits them alongside a ranking. Wire before any shortlist is shown.",
+        "9. Every ranking ships with a sensitivity band",
+        "PASS" if band_ok else "FAIL",
+        (
+            "report.build.require_bands refuses to emit any ranking whose rows lack "
+            "rank_p05/rank_p95, at assembly and again at render, with no flag to disable "
+            f"it. {evidence_rows}. Bands wider than 40 positions are labelled coin flips "
+            "rather than ranked."
+            if band_ok else "; ".join(band_findings)
+        ),
     ))
 
     # 10 — sensitive at weight zero

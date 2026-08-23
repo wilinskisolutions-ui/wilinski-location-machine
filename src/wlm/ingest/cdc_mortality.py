@@ -6,13 +6,22 @@ queried programmatically. Same underlying vital-statistics data.
 These belong in safety because they are built from death certificates, so coverage is close
 to complete where FBI crime reporting — which is voluntary — has holes.
 
-**How suppression actually works in this dataset**, having checked rather than assumed:
-counts are *binned* for privacy (`1-9`, `10-50`) but the rate is published anyway, and
-every zero-rate row carries a genuine count of 0. So rates are usable throughout.
+**How suppression actually works in this dataset.** Counts are binned for privacy (`1-9`,
+`10-50`). Where the bin is `1-9` the rate is often withheld too — and it is withheld as the
+numeric sentinel **-999**, not as a blank or a marker string.
 
-The residual caution is statistical, not one of missingness: a rate derived from a binned
-count of 1-9 in a small county is volatile, and a run of quiet years there will read as
-safety. Phase 4 weight-sensitivity is where that shows up.
+That detail cost 280 counties their safety scores. An earlier version of this module
+checked only the textual markers, so `float("-999")` succeeded and -999 entered the
+pipeline as a real death rate. Both indicators are `lower_better`, which meant every county
+whose data CDC had withheld scored as the safest place in America. Missing data did not
+merely count as zero (Principle 6) — it counted as perfection.
+
+So any negative rate is rejected here: a death rate below zero is not a number, it is a
+flag. The count is reported rather than absorbed.
+
+The residual caution is statistical: a rate derived from a binned count of 1-9 in a small
+county is volatile, and a run of quiet years there will read as safety. Weight sensitivity
+is where that shows up.
 """
 
 from __future__ import annotations
@@ -63,6 +72,7 @@ def ingest(path: Path, *, vintage: str = VINTAGE) -> tuple[pl.DataFrame, dict]:
     rows = json.loads(Path(path).read_text())
     records: list[dict] = []
     suppressed = 0
+    sentinels = 0
 
     for row in rows:
         indicator = INTENT_MAP.get((row.get("intent") or "").strip())
@@ -84,6 +94,13 @@ def ingest(path: Path, *, vintage: str = VINTAGE) -> tuple[pl.DataFrame, dict]:
             except (TypeError, ValueError):
                 suppressed += 1
                 value = None
+            else:
+                # -999 is CDC's numeric "withheld". A death rate cannot be negative, so
+                # anything below zero is a flag rather than a measurement, and letting one
+                # through makes a suppressed county look like the safest in the country.
+                if value < 0:
+                    sentinels += 1
+                    value = None
 
         records.append(
             {"geo_level": "county", "geo_id": geoid, "indicator_id": indicator, "value": value}
@@ -92,4 +109,5 @@ def ingest(path: Path, *, vintage: str = VINTAGE) -> tuple[pl.DataFrame, dict]:
     return emit(records, source_file=Path(path).name, vintage=vintage), {
         "rows": len(records),
         "suppressed_or_unstable": suppressed,
+        "negative_sentinels_rejected": sentinels,
     }

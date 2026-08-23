@@ -15,9 +15,9 @@ help:
 	@echo "data         Download + checksum all sources (needs network - see docs/network-allowlist.md)"
 	@echo "universe     Build the fixed candidate universe          [Phase 1]"
 	@echo "features     Join, transform, percentile-rank            [Phase 2]"
-	@echo "score        Apply curves, weights, knockouts            [Phase 4]"
+	@echo "score        Apply curves, weights, knockouts, rank bands"
 	@echo "diagnostics  Hype residual, coverage, sensitivity        [Phase 4]"
-	@echo "report       Build the ranked HTML report                [Phase 4]"
+	@echo "report       Build the ranked report - refuses any rank without its band"
 
 validate:
 	@$(PY) -m wlm.config.validate

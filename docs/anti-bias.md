@@ -62,7 +62,7 @@ signal we want.
 Every report carries a standing **high-fit / low-hype** section: places in the top decile
 of fit and the bottom half of hype. This is the direct antidote to the original complaint.
 
-**Artifact.** `src/wlm/diagnostics/hype.py` → `output/hype_residual.md`, plus the
+**Artifact.** `src/wlm/diagnostics/hype.py` → `output/hype.md`, plus the
 high-fit/low-hype table in the main report.
 
 **Note.** The hype index is a *diagnostic*, never an input. It never adds to or subtracts
@@ -86,7 +86,7 @@ finding and gets reported.
 **Known worst offender.** FBI crime data — agency reporting is voluntary and coverage is
 genuinely poor in some states. Flagged explicitly rather than imputed.
 
-**Artifact.** `coverage` column on every row; `output/coverage_report.md`; the
+**Artifact.** `coverage` column on every row; `output/coverage.md`; the
 complete-indicators-only robustness re-run.
 
 ---
@@ -111,8 +111,8 @@ and the ranking is not yet trustworthy.** Skipping this step is the most common 
 projects like this fail — they produce confident output that was never validated against
 anything.
 
-**Artifact.** `src/wlm/diagnostics/blind.py` → `output/blind_profiles.md`;
-`profiles/calibration.yaml` and `output/calibration_fit.md`.
+**Artifact.** `src/wlm/diagnostics/blind.py` → `output/blind.md`;
+`profiles/calibration.yaml` and `output/calibration.md`.
 
 ---
 
@@ -126,7 +126,8 @@ precisely where migration-momentum bias (#3) already points. **The bias and the 
 stack.** Following both would reproduce the original shortlist by a different route and
 feel like independent confirmation.
 
-Three requirements follow, all due in Phase 4:
+Three requirements follow. The first two are built (`src/wlm/diagnostics/political.py`,
+`make diagnostics`); the third is a property of the universe and has held since Phase 1.
 
 1. **Every ranking is produced twice** — with and without the political layer — and the
    rank delta is reported per place. The cost of the filter is always visible.
@@ -144,11 +145,11 @@ Three requirements follow, all due in Phase 4:
 
 | Diagnostic | Question it answers | Output |
 |---|---|---|
-| Hype residual | Is fit explained by popularity? | `output/hype_residual.md` |
+| Hype residual | Is fit explained by popularity? | `output/hype.md` |
 | High-fit / low-hype | What are we missing that nobody writes about? | main report section |
-| Coverage report | Is size masquerading as quality? | `output/coverage_report.md` |
+| Coverage report | Is size masquerading as quality? | `output/coverage.md` |
 | Complete-only re-run | Does the answer survive dropping patchy indicators? | rank-delta table |
-| Weight sensitivity | Is this rank real or a coin flip? | stability band per place |
-| Political with/without | What does the filter cost? | rank-delta table |
-| Blind evaluation | Do they like the place or the name? | `output/blind_profiles.md` |
-| Calibration fit | Do the weights reproduce known judgments? | `output/calibration_fit.md` |
+| Weight sensitivity | Is this rank real or a coin flip? | band on every published rank |
+| Political with/without | What does the filter cost? | `output/political.md` |
+| Blind evaluation | Do they like the place or the name? | `output/blind.md` |
+| Calibration fit | Do the weights reproduce known judgments? | `output/calibration.md` |
