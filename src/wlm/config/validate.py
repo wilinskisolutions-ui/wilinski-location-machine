@@ -29,6 +29,11 @@ CURVES = {"higher_better", "lower_better", "ideal_band", "ideal_point"}
 TRANSFORMS = {"none", "log", "sqrt", "per_capita"}
 MONOTONE = {"higher_better", "lower_better"}
 
+# Whether the preferred direction is the same for everyone. Nobody wants more crime or
+# dirtier air, so asking which way they prefer it is a wasted question — only the
+# trade-off weight is elicitable. Town size and winter temperature genuinely differ.
+DIRECTIONS = {"universal", "personal"}
+
 errors: list[str] = []
 warnings: list[str] = []
 notes: list[str] = []
@@ -167,6 +172,15 @@ def check_indicators(indicators: list[dict], domains: list[dict], sources: list[
 
         if not ind.get("unit"):
             err(f"indicator '{iid}': missing 'unit' — raw-value curves are unit-dependent")
+
+        direction = ind.get("direction")
+        if direction not in DIRECTIONS:
+            err(f"indicator '{iid}': direction must be one of {sorted(DIRECTIONS)}, got {direction!r}")
+        elif direction == "universal" and ind.get("curve") in ("ideal_band", "ideal_point"):
+            # A band expresses a personal ideal by definition; calling it universal would
+            # let the questionnaire skip asking where that ideal actually sits.
+            err(f"indicator '{iid}': curve '{ind['curve']}' expresses a personal ideal but "
+                "direction says 'universal'")
 
         # Principle 10, both directions: the sensitive flag and the sensitive domain
         # must agree, so nothing sensitive can hide in a weighted domain.

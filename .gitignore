@@ -20,3 +20,6 @@ __pycache__/
 venv/
 *.egg-info/
 .DS_Store
+
+# questionnaire sessions are personal working state, not project history
+profiles/.sessions/

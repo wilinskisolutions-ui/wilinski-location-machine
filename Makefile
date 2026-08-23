@@ -8,6 +8,9 @@ help:
 	@echo "test         Run the test suite"
 	@echo "demo         Run the built stages on synthetic fixtures (no network needed)"
 	@echo "coverage     Report what has data and what does not, with reasons"
+	@echo ""
+	@echo "questionnaire            Run it locally.  PERSON=practice|emil|winsor  RESET=1"
+	@echo "calibrate    Check the elicited weights against places they already know"
 	@echo "data         Download + checksum all sources (needs network - see docs/network-allowlist.md)"
 	@echo "universe     Build the fixed candidate universe          [Phase 1]"
 	@echo "features     Join, transform, percentile-rank            [Phase 2]"
@@ -20,6 +23,15 @@ validate:
 
 test:
 	@$(PYTEST) -m unittest discover -s tests
+
+PERSON ?= practice
+RESET ?=
+
+questionnaire:
+	@$(PY) -m wlm.questionnaire.server --person $(PERSON) $(if $(RESET),--reset,)
+
+calibrate:
+	@$(PY) -m wlm.diagnostics.calibration
 
 coverage:
 	@$(PY) -m wlm.diagnostics.coverage

@@ -38,6 +38,7 @@ def _indicator(**kw):
     base = {
         "id": "i1", "domain": "d1", "source": "s1",
         "geo_level": "county", "curve": "higher_better", "unit": "x",
+        "direction": "universal",
     }
     base.update(kw)
     return base
@@ -135,6 +136,22 @@ class TestIndicators(unittest.TestCase):
     def test_valid_indicator_passes(self):
         self._run(_indicator())
         self.assertEqual(v.errors, [])
+
+    def test_missing_direction_rejected(self):
+        ind = _indicator()
+        del ind["direction"]
+        self._run(ind)
+        self.assertTrue(any("direction must be one of" in e for e in v.errors))
+
+    def test_band_curve_cannot_claim_universal_direction(self):
+        # A band expresses a personal ideal by definition. Calling it universal would let
+        # the questionnaire skip asking where that ideal sits.
+        self._run(_indicator(
+            curve="ideal_band",
+            curve_params={"lo": 1, "hi": 5, "shoulder": 2},
+            direction="universal",
+        ))
+        self.assertTrue(any("expresses a personal ideal" in e for e in v.errors))
 
 
 class TestCrosswalk(unittest.TestCase):

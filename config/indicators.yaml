@@ -21,6 +21,7 @@ indicators:
     source: zillow_research
     geo_level: county
     curve: lower_better
+    direction: universal
     unit: USD
     notes: Zillow's county file, which joins directly without a metro crosswalk.
 
@@ -30,6 +31,7 @@ indicators:
     source: zillow_research
     geo_level: county
     curve: lower_better
+    direction: universal
     unit: USD/month
     notes: >
       Replaces the HUD Fair Market Rent indicator, whose download returns 202 with an empty
@@ -42,6 +44,7 @@ indicators:
     source: hud_fmr
     geo_level: county
     curve: lower_better
+    direction: universal
     unit: USD/month
 
   - id: cost_price_parity
@@ -51,6 +54,7 @@ indicators:
     geo_level: county
     crosswalk_from: metro
     curve: lower_better
+    direction: universal
     unit: index
     notes: >
       Published per metro area; carried onto counties via the CBSA delineation file.
@@ -63,6 +67,7 @@ indicators:
     source: census_acs5
     geo_level: county
     curve: lower_better
+    direction: universal
     unit: ratio
 
   - id: cost_electricity_price
@@ -71,6 +76,7 @@ indicators:
     source: eia_electricity
     geo_level: state
     curve: lower_better
+    direction: universal
     unit: cents/kWh
 
   - id: cost_income_to_home_ratio
@@ -79,6 +85,7 @@ indicators:
     source: census_acs5
     geo_level: place
     curve: lower_better
+    direction: universal
     unit: ratio
     notes: Affordability relative to local wages, not absolute price.
 
@@ -92,6 +99,7 @@ indicators:
     source: noaa_normals
     geo_level: county
     curve: ideal_band
+    direction: personal
     curve_params: {lo: 40, hi: 62, shoulder: 12, shoulder_lo: 8}
     unit: degF
     provisional: true
@@ -106,6 +114,7 @@ indicators:
     source: noaa_normals
     geo_level: county
     curve: ideal_band
+    direction: personal
     curve_params: {lo: 68, hi: 80, shoulder: 8}
     unit: degF
     provisional: true
@@ -116,6 +125,7 @@ indicators:
     source: noaa_normals
     geo_level: county
     curve: ideal_band
+    direction: personal
     curve_params: {lo: 30, hi: 55, shoulder: 12, shoulder_lo: 8}
     unit: degF
     provisional: true
@@ -126,6 +136,7 @@ indicators:
     source: noaa_normals
     geo_level: county
     curve: ideal_band
+    direction: personal
     curve_params: {lo: 76, hi: 88, shoulder: 8}
     unit: degF
     provisional: true
@@ -139,6 +150,7 @@ indicators:
     source: noaa_normals
     geo_level: county
     curve: lower_better
+    direction: personal
     unit: degree_days
     notes: How much winter actually costs, in energy and in daily life. Harrisburg is 4,756.
 
@@ -148,6 +160,7 @@ indicators:
     source: noaa_normals
     geo_level: county
     curve: ideal_band
+    direction: personal
     curve_params: {lo: 600, hi: 2200, shoulder: 900}
     unit: degree_days
     provisional: true
@@ -158,6 +171,7 @@ indicators:
     source: noaa_normals
     geo_level: county
     curve: ideal_band
+    direction: personal
     curve_params: {lo: 25, hi: 45, shoulder: 12}
     unit: inches
     provisional: true
@@ -168,6 +182,7 @@ indicators:
     source: noaa_normals
     geo_level: county
     curve: ideal_point
+    direction: personal
     curve_params: {target: 12, tol: 20}
     unit: inches
     provisional: true
@@ -178,6 +193,7 @@ indicators:
     source: fema_nri
     geo_level: county
     curve: lower_better
+    direction: universal
     unit: score
     notes: 18 hazards as expected annual loss. Decisive for the Florida/Texas question.
 
@@ -187,6 +203,7 @@ indicators:
     source: fema_nri
     geo_level: county
     curve: lower_better
+    direction: universal
     unit: score
 
   - id: hazard_nri_wildfire
@@ -195,6 +212,7 @@ indicators:
     source: fema_nri
     geo_level: county
     curve: lower_better
+    direction: universal
     unit: score
 
   # Added because the household wants somewhere warmer. Heat and drought are what "warm"
@@ -205,6 +223,7 @@ indicators:
     source: fema_nri
     geo_level: county
     curve: lower_better
+    direction: universal
     unit: score
 
   - id: hazard_nri_drought
@@ -213,6 +232,7 @@ indicators:
     source: fema_nri
     geo_level: county
     curve: lower_better
+    direction: universal
     unit: score
 
   - id: hazard_nri_tornado
@@ -221,6 +241,7 @@ indicators:
     source: fema_nri
     geo_level: county
     curve: lower_better
+    direction: universal
     unit: score
 
   - id: hazard_fatality_risk_per100k
@@ -229,6 +250,7 @@ indicators:
     source: fema_nri
     geo_level: county
     curve: lower_better
+    direction: universal
     unit: per100k
     notes: >
       Summed expected annual loss of life across hazards, divided by population. The
@@ -244,6 +266,7 @@ indicators:
     source: epa_aqs
     geo_level: county
     curve: lower_better
+    direction: universal
     unit: ug/m3
 
   - id: env_natural_amenities
@@ -252,6 +275,7 @@ indicators:
     source: usda_amenities
     geo_level: county
     curve: higher_better
+    direction: universal
     unit: index
     notes: 1999 vintage but structural — terrain and water area, not time-varying.
 
@@ -262,6 +286,7 @@ indicators:
     source: census_acs5
     geo_level: place
     curve: ideal_band
+    direction: personal
     curve_params: {lo: 25000, hi: 250000, shoulder: 50000, shoulder_lo: 8000}
     unit: people
     provisional: true
@@ -277,6 +302,7 @@ indicators:
     source: census_acs5
     geo_level: place
     curve: ideal_band
+    direction: personal
     curve_params: {lo: 1500, hi: 6000, shoulder: 2000}
     unit: people/sqmi
     transform: log
@@ -292,6 +318,7 @@ indicators:
     source: census_acs5
     geo_level: place
     curve: lower_better
+    direction: universal
     unit: minutes
 
   - id: form_transit_ridership_pc
@@ -300,6 +327,7 @@ indicators:
     source: fta_ntd
     geo_level: metro
     curve: higher_better
+    direction: universal
     unit: trips/person/year
 
   # Built to TEST the household's assumption that European access requires the east coast,
@@ -310,6 +338,7 @@ indicators:
     source: bts_intl
     geo_level: county
     curve: higher_better
+    direction: universal
     unit: count
 
   - id: air_europe_hub_distance
@@ -318,6 +347,7 @@ indicators:
     source: bts_intl
     geo_level: county
     curve: lower_better
+    direction: universal
     unit: miles
 
   - id: air_europe_passengers
@@ -326,6 +356,7 @@ indicators:
     source: bts_intl
     geo_level: county
     curve: higher_better
+    direction: universal
     unit: passengers/year
     notes: Volume proxies for fare competition — more traffic generally means cheaper seats.
 
@@ -335,6 +366,7 @@ indicators:
     source: fcc_broadband
     geo_level: county
     curve: higher_better
+    direction: universal
     unit: share
 
   # ---------------- career_economy ----------------
@@ -347,6 +379,7 @@ indicators:
       Sourced from County Health Rankings, which republishes the BLS county series. Saves a
       separate LAUS ingest for the same underlying numbers.
     curve: lower_better
+    direction: universal
     unit: percent
 
   - id: econ_median_wage
@@ -355,6 +388,7 @@ indicators:
     source: bls_oes
     geo_level: metro
     curve: higher_better
+    direction: universal
     unit: USD
 
   - id: econ_industry_diversity
@@ -363,6 +397,7 @@ indicators:
     source: bls_qcew
     geo_level: county
     curve: higher_better
+    direction: universal
     unit: index
     notes: Proxy for resilience — how exposed the place is if one sector contracts.
 
@@ -372,6 +407,7 @@ indicators:
     source: bls_qcew
     geo_level: county
     curve: higher_better
+    direction: universal
     unit: percent
 
   # ---------------- education ----------------
@@ -389,6 +425,7 @@ indicators:
     geo_level: county
     crosswalk_from: district
     curve: higher_better
+    direction: universal
     unit: grade_levels/year
     notes: >
       The load-bearing education indicator. Measures how much students improve, which is
@@ -402,6 +439,7 @@ indicators:
     geo_level: county
     crosswalk_from: district
     curve: higher_better
+    direction: universal
     unit: grade_levels
     notes: >
       Registered alongside learning rate deliberately, NOT as a substitute. Correlates
@@ -415,6 +453,7 @@ indicators:
     source: urban_educationdata
     geo_level: county
     curve: higher_better
+    direction: universal
     unit: USD
 
   - id: edu_student_teacher_ratio
@@ -423,6 +462,7 @@ indicators:
     source: nces_ccd
     geo_level: county
     curve: lower_better
+    direction: universal
     unit: ratio
 
   - id: edu_graduation_rate
@@ -431,6 +471,7 @@ indicators:
     source: urban_educationdata
     geo_level: county
     curve: higher_better
+    direction: universal
     unit: share
 
   - id: edu_district_choice_count
@@ -439,6 +480,7 @@ indicators:
     source: nces_ccd
     geo_level: county
     curve: higher_better
+    direction: universal
     unit: count
     notes: Proxy for school choice without moving house.
 
@@ -449,6 +491,7 @@ indicators:
     source: dol_childcare
     geo_level: county
     curve: lower_better
+    direction: universal
     unit: USD/year
 
   - id: family_childcare_cost_toddler
@@ -457,6 +500,7 @@ indicators:
     source: dol_childcare
     geo_level: county
     curve: lower_better
+    direction: universal
     unit: USD/year
 
   # ---------------- health_care ----------------
@@ -466,6 +510,7 @@ indicators:
     source: chr_rwjf
     geo_level: county
     curve: higher_better
+    direction: universal
     unit: years
 
   - id: health_pcp_ratio
@@ -474,6 +519,7 @@ indicators:
     source: chr_rwjf
     geo_level: county
     curve: lower_better
+    direction: universal
     unit: ratio
 
   - id: health_hpsa_shortage
@@ -482,6 +528,7 @@ indicators:
     source: hrsa_hpsa
     geo_level: county
     curve: lower_better
+    direction: universal
     unit: score
 
   # ---------------- safety ----------------
@@ -491,6 +538,7 @@ indicators:
     source: fbi_cde
     geo_level: county
     curve: lower_better
+    direction: universal
     unit: per100k
     notes: Agency reporting is voluntary — coverage gaps are flagged, never imputed (Principle 6).
 
@@ -500,6 +548,7 @@ indicators:
     source: fbi_cde
     geo_level: county
     curve: lower_better
+    direction: universal
     unit: per100k
 
   # Broadened from crime-only on 2026-08-22. These come from death certificates and crash
@@ -512,6 +561,7 @@ indicators:
     source: nhtsa_fars
     geo_level: county
     curve: lower_better
+    direction: universal
     unit: per100k
     notes: >
       Per-capita road death rates run several times higher in rural counties than dense
@@ -524,6 +574,7 @@ indicators:
     source: cdc_wonder
     geo_level: county
     curve: lower_better
+    direction: universal
     unit: per100k
     notes: CDC WONDER suppresses county cells under 10 deaths — flag, never read as zero.
 
@@ -533,6 +584,7 @@ indicators:
     source: cdc_wonder
     geo_level: county
     curve: lower_better
+    direction: universal
     unit: per100k
     notes: All manners of death combined; suppression caveat as above.
 
@@ -543,6 +595,7 @@ indicators:
     source: chr_rwjf
     geo_level: county
     curve: higher_better
+    direction: universal
     unit: share
 
   # Amenity density comes from County Business Patterns, not OpenStreetMap: Overpass and
@@ -558,6 +611,7 @@ indicators:
     source: census_cbp
     geo_level: county
     curve: higher_better
+    direction: universal
     unit: per10k
     notes: NAICS 722. Dauphin County has 610 establishments, the household's baseline.
 
@@ -567,6 +621,7 @@ indicators:
     source: census_cbp
     geo_level: county
     curve: higher_better
+    direction: universal
     unit: per10k
     notes: NAICS 71 — venues, museums, sports, parks and recreation businesses.
 
@@ -576,6 +631,7 @@ indicators:
     source: census_cbp
     geo_level: county
     curve: higher_better
+    direction: universal
     unit: per10k
 
   - id: amen_fitness_per10k
@@ -584,6 +640,7 @@ indicators:
     source: census_cbp
     geo_level: county
     curve: higher_better
+    direction: universal
     unit: per10k
 
   - id: amen_establishments_per10k
@@ -592,6 +649,7 @@ indicators:
     source: census_cbp
     geo_level: county
     curve: higher_better
+    direction: universal
     unit: per10k
     notes: Overall commercial density — the general "is there anything here" measure.
 
@@ -602,6 +660,7 @@ indicators:
     source: census_acs5
     geo_level: place
     curve: ideal_band
+    direction: personal
     curve_params: {lo: 32, hi: 44, shoulder: 8}
     unit: years
     provisional: true
@@ -612,6 +671,7 @@ indicators:
     source: census_acs5
     geo_level: place
     curve: higher_better
+    direction: personal
     unit: share
     notes: Rootedness vs. transience. Direction is provisional — some households want churn.
     provisional: true
@@ -622,6 +682,7 @@ indicators:
     source: chr_rwjf
     geo_level: county
     curve: higher_better
+    direction: universal
     unit: per10k
 
   # ---------------- sensitive (weight 0 until opted in) ----------------
@@ -631,6 +692,7 @@ indicators:
     source: medsl_elections
     geo_level: county
     curve: ideal_point
+    direction: personal
     curve_params: {target: 0, tol: 100}
     unit: margin_pct
     sensitive: true
@@ -645,6 +707,7 @@ indicators:
     source: arda_religion
     geo_level: county
     curve: ideal_point
+    direction: personal
     curve_params: {target: 0.5, tol: 1.0}
     unit: share
     sensitive: true
@@ -656,6 +719,7 @@ indicators:
     source: census_acs5
     geo_level: place
     curve: ideal_point
+    direction: personal
     curve_params: {target: 0.10, tol: 1.0}
     unit: share
     sensitive: true

@@ -1,0 +1,223 @@
+"""Questionnaire: question sanity, session safety, and weight recovery.
+
+The first class encodes Emil's objection — that asking a human whether they prefer high
+homicide rates is not a question — as a check that cannot be forgotten.
+"""
+
+from __future__ import annotations
+
+import tempfile
+import unittest
+from pathlib import Path
+
+import numpy as np
+import yaml
+
+from wlm.elicit import compare, fit_choices, normalize_budget
+from wlm.paths import CONFIG, ROOT
+from wlm.questionnaire import generate
+from wlm.questionnaire.session import (
+    PRACTICE,
+    REAL_PEOPLE,
+    Session,
+    SessionError,
+    normalize_person,
+)
+
+REGISTRY = {i["id"]: i for i in yaml.safe_load((CONFIG / "indicators.yaml").read_text())["indicators"]}
+
+
+class TestNoNonsenseQuestions(unittest.TestCase):
+    """No question may ask a direction on an indicator where direction is universal."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.bank = generate.load_bank()
+
+    def test_every_indicator_declares_a_direction(self):
+        missing = [i for i, e in REGISTRY.items() if e.get("direction") not in ("universal", "personal")]
+        self.assertEqual(missing, [])
+
+    def test_band_questions_only_target_personal_indicators(self):
+        # This is the actual guard: an anchored band asks "more or less than Harrisburg?",
+        # which is meaningless for crime, life expectancy or air quality.
+        for section in self.bank["sections"]:
+            spec = section.get("generated") or {}
+            if spec.get("kind") != "anchored_band":
+                continue
+            for indicator in spec["indicators"]:
+                with self.subTest(indicator=indicator):
+                    self.assertEqual(
+                        REGISTRY[indicator]["direction"], "personal",
+                        f"{indicator} has a universal direction — asking which way they want "
+                        "it is a wasted question",
+                    )
+
+    def test_universal_indicators_appear_only_as_tradeoffs(self):
+        """Universal indicators may still be measured — by what people give up for them."""
+        for section in self.bank["sections"]:
+            spec = section.get("generated") or {}
+            for indicator in spec.get("attributes", []):
+                self.assertIn(indicator, REGISTRY)
+
+    def test_every_question_maps_to_something_real(self):
+        domains = {d["id"] for d in yaml.safe_load((CONFIG / "domains.yaml").read_text())["domains"]}
+        for section in self.bank["sections"]:
+            for q in section.get("questions", []):
+                maps = q.get("maps_to")
+                self.assertIsNotNone(maps, f"{q['id']} maps to nothing and should be cut")
+                if maps["kind"] in ("indicator", "knockout"):
+                    self.assertIn(maps["target"], REGISTRY, q["id"])
+                elif maps["kind"] == "weight_domain" and maps["target"] != "all":
+                    self.assertIn(maps["target"], domains, q["id"])
+
+
+class TestGeneratedQuestions(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.questions = generate.build()
+
+    def test_produces_a_full_questionnaire(self):
+        self.assertGreater(len(self.questions), 40)
+
+    def test_tradeoff_pairs_use_real_values_and_never_dominate(self):
+        pairs = [q for q in self.questions if q["type"] == "choice_pair"]
+        self.assertGreater(len(pairs), 15)
+        for task in pairs:
+            wins_a = wins_b = 0
+            for attr in task["attributes"]:
+                self.assertIsNotNone(attr["a_raw"])
+                self.assertIsNotNone(attr["b_raw"])
+                lower_better = REGISTRY[attr["indicator"]]["curve"] == "lower_better"
+                a_better = (attr["a_raw"] < attr["b_raw"]) if lower_better else (attr["a_raw"] > attr["b_raw"])
+                wins_a += a_better
+                wins_b += not a_better
+            # A pair where one side wins everything teaches nothing about trade-offs.
+            self.assertGreater(wins_a, 0, task["id"])
+            self.assertGreater(wins_b, 0, task["id"])
+
+    def test_band_questions_are_anchored_to_harrisburg(self):
+        bands = [q for q in self.questions if q["type"] == "scale"]
+        self.assertGreater(len(bands), 5)
+        for q in bands:
+            self.assertIn("Harrisburg", q["anchor"])
+
+    def test_consistency_repeats_exist(self):
+        repeats = [q for q in self.questions if q.get("repeat_of")]
+        self.assertGreater(len(repeats), 0)
+
+
+class TestSessionSafety(unittest.TestCase):
+    """Emil practises before the real run. Practice must not be able to destroy answers."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self._tmp.name)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_practice_cannot_write_a_profile(self):
+        s = Session.load(PRACTICE, sessions_dir=self.dir)
+        self.assertFalse(s.can_write_profile())
+        with self.assertRaises(SessionError):
+            s.profile_path()
+        self.assertIsNone(s.finish())
+
+    def test_real_people_can(self):
+        for person in REAL_PEOPLE:
+            s = Session.load(person, sessions_dir=self.dir)
+            self.assertTrue(s.can_write_profile())
+            self.assertTrue(str(s.profile_path()).endswith(f"{person}.yaml"))
+
+    def test_path_traversal_rejected(self):
+        for bad in ("../../etc/passwd", "emil/../winsor", "EMIL; rm -rf /", "", "nobody"):
+            with self.assertRaises(SessionError, msg=bad):
+                normalize_person(bad)
+
+    def test_names_are_case_insensitive(self):
+        self.assertEqual(normalize_person("Emil"), "emil")
+
+    def test_reset_clears_everything(self):
+        s = Session.load("emil", sessions_dir=self.dir)
+        s.record("q1", "yes")
+        s.position = 5
+        s.save()
+        self.assertTrue(s.path.exists())
+        s.reset()
+        self.assertEqual(s.answers, {})
+        self.assertEqual(s.position, 0)
+        self.assertFalse(s.path.exists())
+
+    def test_resume_picks_up_where_it_stopped(self):
+        s = Session.load("emil", sessions_dir=self.dir)
+        s.record("q1", "yes")
+        s.position = 7
+        s.save()
+        again = Session.load("emil", sessions_dir=self.dir)
+        self.assertEqual(again.position, 7)
+        self.assertEqual(again.answers["q1"], "yes")
+
+    def test_sessions_are_isolated_between_people(self):
+        emil = Session.load("emil", sessions_dir=self.dir)
+        emil.record("q1", "emil-answer")
+        winsor = Session.load("winsor", sessions_dir=self.dir)
+        self.assertEqual(winsor.answers, {})
+
+
+class TestWeightRecovery(unittest.TestCase):
+    """If the elicitation maths cannot recover a known weight vector, every weight is a guess."""
+
+    def _synthetic(self, truth, n=60, noise=0.0, seed=3):
+        rng = np.random.default_rng(seed)
+        tasks, answers = [], {}
+        for i in range(n):
+            attrs, utility = [], 0.0
+            for name, weight in truth.items():
+                a, b = rng.normal(), rng.normal()
+                attrs.append({"indicator": name, "a_raw": a, "b_raw": b})
+                utility += weight * (a - b)
+            tasks.append({"id": f"c{i}", "attributes": attrs})
+            flip = rng.random() < noise
+            answers[f"c{i}"] = ("A" if utility > 0 else "B") if not flip else ("B" if utility > 0 else "A")
+        return tasks, answers
+
+    def test_recovers_ordering_from_clean_choices(self):
+        truth = {"cost_home_value_median": -3.0, "climate_temp_winter_mean": 2.0,
+                 "amen_food_drink_per10k": 1.0}
+        tasks, answers = self._synthetic(truth)
+        fit = fit_choices(tasks, answers, directions={k: "higher_better" for k in truth})
+        self.assertGreater(fit.accuracy, 0.9)
+        self.assertTrue(fit.is_informative)
+        order = sorted(fit.weights, key=lambda k: -fit.weights[k])
+        self.assertEqual(order[0], "cost_home_value_median")
+        self.assertEqual(order[-1], "amen_food_drink_per10k")
+
+    def test_random_answers_are_reported_as_uninformative(self):
+        # Fatigue or genuinely equal pairs produce noise. Presenting that as a finding
+        # would be worse than admitting it.
+        truth = {"a": 1.0, "b": 1.0, "c": 1.0}
+        tasks, answers = self._synthetic(truth, noise=0.5, seed=9)
+        fit = fit_choices(tasks, answers, directions={})
+        self.assertFalse(fit.is_informative)
+
+    def test_contradicting_a_repeated_task_is_flagged(self):
+        tasks = [
+            {"id": "c1", "attributes": [{"indicator": "x", "a_raw": 1.0, "b_raw": 0.0}]},
+            {"id": "c1_repeat", "repeat_of": "c1",
+             "attributes": [{"indicator": "x", "a_raw": 1.0, "b_raw": 0.0}]},
+        ]
+        fit = fit_choices(tasks, {"c1": "A", "c1_repeat": "B"}, directions={})
+        self.assertIn("c1", fit.contradictions)
+
+    def test_budget_normalises_to_100(self):
+        self.assertAlmostEqual(sum(normalize_budget({"a": 3, "b": 1}).values()), 100.0)
+        self.assertEqual(normalize_budget({}), {})
+
+    def test_stated_versus_revealed_gap_is_reported(self):
+        notes = compare({"cost_housing": 40.0}, {"cost_housing": 10.0})
+        self.assertTrue(any("cost_housing" in n for n in notes))
+
+
+if __name__ == "__main__":
+    unittest.main()

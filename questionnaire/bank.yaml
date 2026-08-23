@@ -1,0 +1,249 @@
+# Question bank.
+#
+# DESIGN RULE, and the reason this file exists in the shape it does:
+#
+#   Never ask someone which direction they prefer on a universally-directional indicator.
+#   "Do you prefer high homicide rates?" is not a question — everyone answers no, and the
+#   answer carries no information. For those indicators the only thing worth eliciting is
+#   how much the household would GIVE UP to get them, which is what the trade-off block
+#   measures by observing choices rather than asking about preferences.
+#
+#   Direction questions are reserved for indicators marked `direction: personal` in
+#   config/indicators.yaml, where the ideal genuinely differs between people: town size,
+#   winter temperature, density, rootedness, the sensitive layer.
+#
+# tests/test_bank.py enforces this. It is a check, not a convention.
+#
+# Two further principles:
+#   * Anchor on Harrisburg. Emil and Winsor know it. "Warmer or colder than here?" is
+#     answerable; "what is your ideal January mean in Fahrenheit?" is not.
+#   * Generated blocks draw from real rows in features.parquet, so no impossible place is
+#     ever offered, and the places stay unnamed — which makes the trade-off block double as
+#     the blind evaluation from docs/anti-bias.md.
+
+meta:
+  version: 1
+  target_minutes: 45
+  baseline_label: "Harrisburg, PA"
+
+sections:
+
+  # ------------------------------------------------------------------ 1. constraints
+  - id: constraints
+    title: The basics
+    intro: >
+      A few facts about your situation. These set hard filters and answer questions the
+      data cannot — nothing here is a preference, so answer literally.
+    questions:
+      - id: q_move_timeline
+        text: Roughly when would you want to move?
+        type: choice
+        options: ["Within a year", "1-2 years", "2-5 years", "No fixed timeline"]
+        maps_to: {kind: qualitative_note, target: timeline}
+
+      - id: q_housing_budget
+        text: What could you comfortably spend on a home?
+        help: Your honest ceiling, not a stretch. Used as a hard filter, so err generous.
+        type: number
+        unit: USD
+        maps_to: {kind: knockout, target: cost_home_value_median, op: max}
+
+      - id: q_buy_or_rent
+        text: Would you buy or rent when you arrive?
+        type: choice
+        options: ["Buy straight away", "Rent first, buy later", "Rent indefinitely", "Not sure"]
+        maps_to: {kind: qualitative_note, target: tenure}
+
+      - id: q_income_location_independent
+        text: Does your income depend on where you live?
+        help: >
+          If you can earn the same anywhere, the jobs domain matters far less and that
+          weight is better spent elsewhere.
+        type: choice
+        options:
+          - "Fully location-independent"
+          - "Mostly, but I'd want a city with options"
+          - "I'd need to find work locally"
+          - "One of us is tied, the other isn't"
+        maps_to: {kind: weight_domain, target: career_economy, sets: relevance}
+
+      - id: q_children_now
+        text: Do you have children living with you?
+        type: choice
+        options: ["No", "Yes", "Expecting"]
+        maps_to: {kind: weight_domain, target: education, sets: relevance}
+
+      - id: q_children_planned
+        text: Are you planning children in the next five years?
+        help: This decides whether schools and childcare should carry weight at all.
+        type: choice
+        options: ["Yes", "Possibly", "No", "Prefer not to say"]
+        maps_to: {kind: weight_domain, target: family_childcare, sets: relevance}
+
+      - id: q_car_free
+        text: Would you want to be able to live without a car?
+        type: choice
+        options:
+          - "Yes, that matters to us"
+          - "Nice but not essential"
+          - "No, we'll drive"
+        maps_to: {kind: indicator, target: form_transit_ridership_pc, sets: relevance}
+
+      - id: q_europe_trips
+        text: How often would you expect to fly to Europe?
+        help: You mentioned family there. This sets how much airport access is worth.
+        type: choice
+        options: ["Several times a year", "About once a year", "Every few years", "Rarely"]
+        maps_to: {kind: indicator, target: air_europe_destinations, sets: relevance}
+
+      - id: q_max_hub_drive
+        text: What's the longest drive to an airport you'd accept for a trip to Europe?
+        type: choice
+        options: ["Under an hour", "Up to 2 hours", "Up to 3 hours", "Distance doesn't matter much"]
+        maps_to: {kind: knockout, target: air_europe_hub_distance, op: max}
+
+      - id: q_dealbreakers
+        text: Is there anything that would rule a place out completely, however good otherwise?
+        help: >
+          Free text. Real deal-breakers only — things that would end the conversation, not
+          things you'd rather avoid.
+        type: text
+        maps_to: {kind: qualitative_note, target: dealbreakers}
+
+  # ------------------------------------------------------------- 2. anchored bands
+  - id: bands
+    title: Compared to Harrisburg
+    intro: >
+      You know Harrisburg, so it's the easiest reference point there is. Each question
+      shows what it's actually like there, and asks what you'd want instead.
+    generated:
+      kind: anchored_band
+      # One question per personal-direction indicator, with the Harrisburg value filled in
+      # at runtime from features.parquet.
+      indicators:
+        - climate_temp_winter_mean
+        - climate_winter_low
+        - climate_temp_summer_mean
+        - climate_summer_high
+        - climate_annual_snowfall
+        - climate_annual_precip
+        - form_population
+        - form_population_density
+        - comm_median_age
+        - comm_same_house_1yr
+      scale:
+        - {label: "Much less than here", offset: -2}
+        - {label: "Somewhat less", offset: -1}
+        - {label: "About the same", offset: 0}
+        - {label: "Somewhat more", offset: 1}
+        - {label: "Much more than here", offset: 2}
+        - {label: "Don't care either way", offset: null}
+
+  # -------------------------------------------------------------- 3. trade-offs
+  - id: tradeoffs
+    title: Which would you rather live in?
+    intro: >
+      Two real places, names hidden. Neither is better on everything — each gives something
+      up. Pick the one you'd rather live in. There's no right answer; the point is what you
+      trade away, which is the only reliable way to measure what you actually value.
+    generated:
+      kind: discrete_choice
+      tasks: 25
+      # Drawn from real rows so no impossible combination is ever shown. Pairs where one
+      # side wins on every attribute are rejected — they teach nothing.
+      attributes:
+        - cost_home_value_median
+        - cost_rent_median_zori
+        - climate_temp_winter_mean
+        - climate_summer_high
+        - amen_food_drink_per10k
+        - amen_arts_rec_per10k
+        - air_europe_destinations
+        - air_europe_hub_distance
+        - safety_traffic_fatality_rate
+        - health_life_expectancy
+        - env_pm25_annual
+        - form_population
+        - hazard_fatality_risk_per100k
+      repeat_for_consistency: 3
+      maps_to: {kind: weight_domain, target: all, sets: weights}
+
+  # ----------------------------------------------------------- 4. budget allocation
+  - id: budget
+    title: Spending your attention
+    intro: >
+      100 points across everything that could matter. Spending on one thing takes from
+      another — that's deliberate, and it's why this tells us more than rating each one
+      out of ten.
+    generated:
+      kind: budget_allocation
+      total: 100
+      domains_from_config: true
+
+  # --------------------------------------------------------------- 5. calibration
+  - id: calibration
+    title: Places you already know
+    intro: >
+      Rate only the places you've actually lived in, visited properly, or seriously
+      considered. Skip anything you only know by reputation — a rating based on what
+      you've read imports exactly the bias this whole project exists to remove.
+    generated:
+      kind: place_rating
+      count: 25
+      scale: {min: 1, max: 10}
+      allow_skip: true
+      include_baseline: true
+    questions:
+      - id: q_calibration_other
+        text: Any other places you know well that weren't listed?
+        help: Name them and rate each 1-10. These are worth more than the ones we guessed.
+        type: text
+        maps_to: {kind: qualitative_note, target: calibration_extra}
+
+  # ------------------------------------------------------------ 6. sensitive (opt-in)
+  - id: sensitive
+    title: Optional — the touchier things
+    intro: >
+      Politics, religion and demographics. These stay at zero weight unless you turn them
+      on here, and you can skip the whole section. Nothing is pre-decided: the engine
+      stores the raw numbers and your answer decides which direction, if any, counts as
+      better.
+    optional: true
+    questions:
+      - id: q_sensitive_optin
+        text: Do you want any of these to affect the ranking?
+        type: multi
+        options:
+          - "Political climate"
+          - "Religious community"
+          - "Diversity and share of people born abroad"
+          - "None of these"
+        maps_to: {kind: qualitative_note, target: sensitive_opt_in}
+
+  # ------------------------------------------------------------------- 7. meta
+  - id: meta
+    title: Last few
+    questions:
+      - id: q_ten_year_test
+        text: Picture your life there in ten years. What are you doing on a normal Saturday?
+        help: Free text. This often exposes priorities the numbered questions miss entirely.
+        type: text
+        maps_to: {kind: qualitative_note, target: ten_year_test}
+
+      - id: q_worst_case
+        text: What would make you regret the move?
+        type: text
+        maps_to: {kind: qualitative_note, target: regret}
+
+      - id: q_harrisburg_keep
+        text: What would you miss about Harrisburg?
+        help: >
+          You're leaving, but something there works. Whatever it is should probably survive
+          the move.
+        type: text
+        maps_to: {kind: qualitative_note, target: baseline_keep}
+
+      - id: q_harrisburg_leave
+        text: What's actually driving you out?
+        type: text
+        maps_to: {kind: qualitative_note, target: baseline_push}

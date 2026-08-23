@@ -49,6 +49,8 @@ make data       # download every source (~250MB) into data/raw with checksums
 make universe   # build the candidate universe
 make features   # ingest everything and compute percentiles
 make coverage   # report what has data and what does not, with reasons
+make questionnaire PERSON=practice   # try the questionnaire safely
+make calibrate  # check elicited weights against places they already know
 ```
 
 `validate` needs PyYAML alone. The pipeline stages need `pip install -e ".[pipeline]"`.
@@ -68,6 +70,7 @@ gap has a named reason in `output/coverage.md`.
 | 0 — Charter | Principles, methodology, registries, scaffolding | done |
 | 1 — Universe | Fixed candidate set, pipeline proven on 3-4 sources | done |
 | 2 — Ingest | 44 of 64 indicators on real data, coverage report | done |
+| 3 — Questionnaire | Local instrument, elicitation, calibration | **built, awaiting answers** |
 | 2 — Ingest | 40-60 indicators, coverage report | |
 | 3 — Questionnaire | Question bank, elicited weights, calibration set | |
 | 4 — Engine | Scoring, sensitivity, anti-bias diagnostics, report | |

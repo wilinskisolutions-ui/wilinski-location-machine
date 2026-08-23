@@ -5,9 +5,9 @@
 > is the project's working memory: a session that reads it should be able to resume cold
 > without re-deriving anything or re-asking a settled question.
 
-**Current phase:** Phase 2 — Real data · **Status:** **complete.** 9,885-place universe,
-**44 of 64 indicators populated**; the other 20 have documented reasons (`output/coverage.md`)
-**Blocking Phase 3:** the questionnaire, plus the household's calibration ratings
+**Current phase:** Phase 3 — Questionnaire · **Status:** instrument **built and tested**;
+waiting on Emil and Winsor to answer it
+**Blocking Phase 4:** two completed profiles and the calibration ratings — nothing technical
 **Last updated:** 2026-08-22
 
 ---
@@ -19,7 +19,7 @@ Phase 3 questionnaire; anything already known is recorded here so it is never re
 
 | Field | Value |
 |---|---|
-| Members | Two partners |
+| Members | **Emil** and **Winsor** *(pronouns not stated for either — use names)* |
 | Contact | business@wilinskisolutions.com |
 | Preferred names / pronouns | **UNKNOWN — ask before writing either into any document** |
 | Move type | Domestic (already living in the US) |
@@ -251,6 +251,44 @@ moves.
 monitor. Left missing rather than interpolated, so it lowers coverage instead of inventing
 clean air for unmonitored places.
 
+### 2026-08-22 — Phase 3: questionnaire built, and the design flaw Emil caught
+Emil's objection, verbatim: *"A question like 'Do you prefer high homicide rates?' doesn't
+make sense to ask an actual human, because obviously everyone would answer no."* He was
+right, and it reshaped the instrument.
+
+**The fix:** every indicator now carries `direction: universal | personal` (49 universal,
+15 personal). A universal direction — crime, life expectancy, air quality, hazard — means
+there is no preference to elicit, only a **trade-off weight**. Direction questions are
+reserved for the 15 where the ideal genuinely differs: town size, winter temperature,
+density, rootedness, the sensitive layer. `tests/test_questionnaire.py` enforces it, so it
+cannot creep back as the bank grows.
+
+**How weights are actually measured now:** 28 place-vs-place choices drawn from real rows in
+`features.parquet`. Two unnamed places, neither better on everything, pick one. Fitting a
+logistic utility over the attribute differences recovers weights from *behaviour* rather
+than self-report — which is the only way to measure something like air quality, where
+asking directly is absurd. Verified against synthetic data with known weights: the fit
+recovers the ordering, and near-random answers are reported as uninformative rather than
+dressed up as findings. Because the places are unnamed, this doubles as countermeasure #5,
+blind evaluation.
+
+**Anchored on Harrisburg.** All 10 band questions read "compared with here", with real
+values filled in (winter 32°F, snow 26", population 50,092, median age 32). Absolute
+numbers are hard to answer honestly; comparisons to home are easy.
+
+**Runs locally, at Emil's request** — `make questionnaire`, loopback only, nothing uploaded.
+Practice mode is enforced by an allowlist rather than by care: a practice session is
+*structurally incapable* of writing `emil.yaml` or `winsor.yaml`. Reset and resume both work;
+answers save after every question.
+
+**Independence on one shared laptop:** sessions are per-person files, no cross-display, and
+results stay hidden until both have finished.
+
+**Two bugs caught while building:** four band questions were silently dropping because their
+indicators are place-level and the baseline lookup only read county level — those four
+would have kept my provisional guesses. And the older validator fixtures had to be updated
+once `direction` became mandatory, which is the validator doing its job.
+
 ---
 
 ## Data inventory
@@ -325,10 +363,11 @@ cases are covered by `make test` (90 tests, none needing network).
 
 ## Next actions
 
-1. **Get the household's calibration ratings** — 15–20 places they know, rated 1–10,
-   including Harrisburg. Without it no ranking is trustworthy, and it is now the cheapest
-   and highest-value thing left to collect. This blocks Phase 3 more than any data does.
-2. **Phase 3 — Questionnaire.** Weights by forced trade-off; both partners independently.
-3. **Optional data top-ups**, none blocking: education is 0/6 (SEDA needs one manual
-   download, its links being JS-gated), childcare 0/2, crime 2/5. `output/coverage.md`
-   lists every gap with its reason.
+1. **Emil practises, then both answer.** `make questionnaire PERSON=practice`, then
+   `PERSON=emil`, then `PERSON=winsor`. See `questionnaire/HOW-TO-RUN.md`. ~45 minutes each.
+   **Nothing else can proceed until this happens.**
+2. **`make calibrate`** — if the elicited weights do not reproduce their own ratings of
+   places they know, the weights are wrong and no ranking should be trusted yet.
+3. **Optional data top-ups**, none blocking: education 0/6 (SEDA needs one manual download,
+   its links being JS-gated), childcare 0/2, crime 2/5. `output/coverage.md` lists every gap.
+4. **Phase 4 — the scoring engine**, once two profiles exist.
