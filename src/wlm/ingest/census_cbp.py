@@ -47,6 +47,21 @@ NAICS_TOTALS: dict[str, str] = {
     "71----": "amen_arts_rec_total",
 }
 
+# This comment said "so both are measured" as though registering the total settled it.
+# It did not: the questionnaire's trade-off design only ever offered the per-10k attributes,
+# so the totals could never earn a real weight and sat at the 0.05 floor while a per-10k
+# indicator could reach 0.2+. A real household's answers reached this exact case — Emil's
+# arts_rec_per10k weight came out at 0.22 against arts_rec_total's floor of 0.05 — and it put
+# four-county Great Plains towns with a handful of venues ahead of Topeka, which has 55.
+#
+# The fix belongs here rather than in the elicitation design, because it should not depend
+# on any one household happening to trade off on the total. A population floor on the rate's
+# denominator is the same treatment MIN_POPULATION_FOR_RATE gives road-fatality rates in
+# fars.py: below the floor, the rate stops climbing as population shrinks, so a county of a
+# few hundred people cannot report a rate as if it served ten thousand. Established towns
+# above the floor are untouched.
+MIN_POPULATION_FOR_RATE = 10_000
+
 
 def _rows(path: Path):
     path = Path(path)
@@ -91,8 +106,10 @@ def ingest(
             establishments = float(row.get("est") or "")
         except ValueError:
             continue
-        # No population means no per-capita rate. Missing, not zero (Principle 6).
-        value = (establishments / pop * 10_000) if pop else None
+        # No population means no per-capita rate. Missing, not zero (Principle 6). A
+        # population below the floor still gets a rate, computed against the floor rather
+        # than the true (tiny) count, so the number cannot claim an implausible density.
+        value = (establishments / max(pop, MIN_POPULATION_FOR_RATE) * 10_000) if pop else None
 
         records.append(
             {"geo_level": "county", "geo_id": geoid, "indicator_id": indicator, "value": value}

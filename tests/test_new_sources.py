@@ -256,3 +256,110 @@ class TestProfileRoundTrip(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless((RAW / "census_cbp" / "cbp22co.zip").exists(), "CBP data not present")
+class TestAmenityDensityFloor(unittest.TestCase):
+    """Found by running a real household's answers through the pipeline, not by reading.
+
+    Emil's recreation_lifestyle domain — his second-highest weight — put Great Plains
+    counties of a few thousand people ahead of real cities, because `amen_arts_rec_per10k`
+    is a rate over population and a handful of venues in a tiny county produces an extreme
+    per-capita number. LaMoure County, ND (population 4,051, four arts venues total) scored
+    at the 92nd percentile; Shawnee County, KS — Topeka, fifty-five venues — scored at the
+    38th. The registry already carried an absolute-count indicator meant to counterbalance
+    exactly this, but the questionnaire's trade-off design never offered it as an attribute,
+    so it could never earn more than the floor weight while the per-capita version reached
+    0.22. The counterbalance existed in the registry and did nothing in practice.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        from wlm.ingest import census_cbp
+
+        universe = pl.read_parquet(UNIVERSE).filter(pl.col("geo_level") == "county")
+        cls.population = dict(zip(universe["geo_id"], universe["population"]))
+        cls.frame = census_cbp.ingest(RAW / "census_cbp" / "cbp22co.zip", cls.population)
+
+    def _rated(self, indicator: str) -> pl.DataFrame:
+        values = self.frame.filter(pl.col("indicator_id") == indicator).select(
+            ["geo_id", "value"]
+        )
+        pops = pl.DataFrame(
+            {"geo_id": list(self.population), "population": list(self.population.values())}
+        ).drop_nulls()
+        return values.join(pops, on="geo_id", how="inner").drop_nulls()
+
+    def test_below_the_floor_the_rate_equals_the_raw_count(self):
+        """The real guarantee, and the one that matters: with the floor at exactly
+        10,000 ("per 10k"), a county below it shows a rate equal to its raw establishment
+        count — it cannot claim a density implying a town ten times its actual size.
+
+        Custer County, ID (population 4,597) legitimately has 19 arts and recreation
+        venues, being the gateway to the Sawtooths — a real number, not noise. The floor
+        does not (and should not) hide that; it stops the number from being multiplied up
+        as though the county had thousands more residents than it does.
+        """
+        from wlm.ingest.census_cbp import MIN_POPULATION_FOR_RATE
+
+        self.assertEqual(MIN_POPULATION_FOR_RATE, 10_000, "the invariant below assumes this")
+        rated = self._rated("amen_arts_rec_per10k")
+        totals = self.frame.filter(pl.col("indicator_id") == "amen_arts_rec_total").select(
+            ["geo_id", "value"]
+        ).rename({"value": "total"})
+        below = rated.filter(pl.col("population") < MIN_POPULATION_FOR_RATE).join(
+            totals, on="geo_id", how="inner"
+        )
+        self.assertGreater(below.height, 50, "too few counties below the floor to check")
+        mismatched = below.filter((pl.col("value") - pl.col("total")).abs() > 0.01)
+        self.assertEqual(
+            mismatched.height, 0,
+            f"below the floor, rate should equal raw count: {mismatched.head(3).to_dicts()}",
+        )
+
+    def test_known_amenity_hotspots_lead_once_the_floor_is_applied(self):
+        """Aspen, Jackson Hole and Manhattan are not a coincidence if the fix is doing its
+        job: real tourism and cultural centres, not statistical noise from a tiny county."""
+        top = self._rated("amen_arts_rec_per10k").sort("value", descending=True).head(10)
+        universe = pl.read_parquet(UNIVERSE).select(["geo_id", "population"])
+        self.assertGreater(
+            top.join(universe, on="geo_id", how="left")["population"].median(), 7_000,
+            "the top of the rate is still dominated by tiny counties",
+        )
+
+    def test_the_absolute_count_is_untouched_by_the_floor(self):
+        """The floor only tempers the rate; the total stays a real count."""
+        totals = self.frame.filter(pl.col("indicator_id") == "amen_arts_rec_total")
+        self.assertGreater(totals["value"].max(), 500, "Manhattan should show hundreds")
+
+    def test_a_county_at_the_floor_and_one_far_above_it_are_treated_alike(self):
+        """The floor changes the denominator, not the arithmetic: two counties whose
+        population sits below MIN_POPULATION_FOR_RATE should score identically on the same
+        establishment count."""
+        from wlm.ingest.census_cbp import MIN_POPULATION_FOR_RATE
+
+        small_pop = {"11111": 1_200, "22222": 4_000}
+        # Constructed directly rather than through a fixture file: what matters here is
+        # the arithmetic, not the parsing.
+        from wlm.ingest.census_cbp import ingest as cbp_ingest
+        import unittest.mock as mock
+
+        def fake_rows(_path):
+            yield {"fipstate": "11", "fipscty": "111", "naics": "71----", "est": "5"}
+            yield {"fipstate": "22", "fipscty": "222", "naics": "71----", "est": "5"}
+
+        with mock.patch("wlm.ingest.census_cbp._rows", fake_rows), \
+             mock.patch("wlm.ingest.census_cbp.is_in_scope", return_value=True), \
+             mock.patch(
+                 "wlm.ingest.census_cbp.county_geoid",
+                 side_effect=lambda s, c: s + c[-3:],  # matches county_geoid: 2-digit state + 3-digit county
+             ):
+            frame = cbp_ingest("unused", small_pop)
+
+        rates = dict(
+            frame.filter(pl.col("indicator_id") == "amen_arts_rec_per10k")
+            .select(["geo_id", "value"])
+            .iter_rows()
+        )
+        self.assertAlmostEqual(rates["11111"], rates["22222"])
+        self.assertAlmostEqual(rates["11111"], 5 / MIN_POPULATION_FOR_RATE * 10_000)

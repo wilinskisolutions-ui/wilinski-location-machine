@@ -8,10 +8,13 @@
 **Current phase:** Phase 4 — Scoring · **Status:** complete. Engine, two-stage ranking, rank
 bands, report and all four anti-bias diagnostics run end to end. **All 10 GOAL.md principles
 pass** (`output/audit.md`). **54 of 65 indicators populated; no scoring domain is empty.**
-Four bug sweeps so far; each found bugs in a path nothing had exercised, and the rate is
-not yet falling.
-**Blocking a real ranking:** two completed profiles. Everything in `output/` was produced
-from placeholder weights and says so on its face.
+Four planned bug sweeps, plus real use finding a fifth round the moment a real household's
+answers first exercised the elicitation path — each round found bugs in a path nothing had
+exercised, and the rate is not yet falling.
+**Emil has answered.** `profiles/emil.yaml` is real, not synthetic — his trade-off choices
+did not carry enough cross-validated signal to trust (see 2026-08-23 entry below), so his
+weights are his stated budget allocation directly. His personal report is built and
+published. **Still blocking a joint household ranking:** Winsor's answers.
 **Answering:** the questionnaire now also runs as a phone artifact, one page per person.
 **Last updated:** 2026-08-23
 
@@ -500,6 +503,84 @@ way leave the laptop.
 
 The first phone test found the page laying itself out at 980px and scaling down — the
 artifact wrapper owns `<head>`, so the page now adds its own viewport meta.
+
+---
+
+### 2026-08-23 — Emil answered for real, and it found the deepest bug yet
+
+Emil filled out the phone questionnaire and exported his answers. Landing them and running
+the actual pipeline — the step the page itself cannot do — surfaced two real bugs, one of
+them structural to the elicitation method itself, not to any one household's data.
+
+**1. Amenity density had no population floor, and the top of Emil's ranking was Great
+Plains counties of a few thousand people.** `amen_arts_rec_per10k` and its siblings are
+establishment counts per 10,000 residents; a county of 4,051 people with four arts venues
+produces a wildly inflated rate purely from the tiny denominator. `census_cbp.py` already
+carried a comment naming this exact risk (San Juan County, CO) and had registered
+`amen_arts_rec_total`/`amen_food_drink_total` as the intended counterbalance — but those
+totals were never added to the trade-off attribute list in `bank.yaml`, so they could never
+earn more than the 0.05 floor weight while the per-capita version reached 0.22 in Emil's fit.
+The documented mitigation existed in the registry and did nothing in practice.
+
+Fixed with a population floor on the rate's denominator (`MIN_POPULATION_FOR_RATE = 10_000`
+in `census_cbp.py`), the same treatment `fars.py` already gives road-fatality rates. Below
+the floor, the rate cannot exceed the raw establishment count — verified as an exact
+equality, since 10,000 is also the "per 10k" scale factor. The new top of the distribution
+is Jackson Hole WY, Aspen (Pitkin County CO), Breckenridge (Summit County CO), Manhattan:
+real amenity-dense places, not statistical noise. Legitimate small tourism counties (Custer
+County ID, 4,597 people, 19 genuine venues as the Sawtooths gateway) are still allowed to
+rank — the floor caps the multiplier, not the finding.
+
+**2. The trade-off fit was unregularized, and the informativeness check read the wrong
+number — both found only because a real household finally exercised this path.** Two
+compounding problems:
+
+- `fit_choices` ran unpenalized logistic regression over ~15 design attributes against
+  ~24-28 real choices (p/n ≈ 0.6). Emil's real answers hit in-sample accuracy of exactly
+  1.00, and his second-highest revealed weight (`amen_arts_rec_per10k`, 0.22) had a
+  **negative** coefficient — his choices looked like a preference against culture and
+  recreation venues, which is almost certainly collinearity with cost in the specific pairs
+  he saw rather than a real aversion. Added L2 regularization (`l2=0.3`, tested from 0.05 to
+  3.0 against his real data — 0.3 was the smallest penalty that reached a stable accuracy
+  plateau without flattening every coefficient toward uniform importance).
+- `is_informative` gated on **in-sample** accuracy at a 0.65 threshold. Measured against the
+  real bank design: pure random answers produced in-sample accuracy averaging 0.83-0.95
+  across trials — the check was passing almost regardless of whether the choices meant
+  anything. Replaced with leave-one-out cross-validated accuracy (`_leave_one_out_accuracy`
+  in `elicit.py`), which cannot be inflated by the model's own capacity because each
+  held-out choice was never used to fit the model being tested against it.
+
+**The CV threshold itself needed calibrating, not guessing — LOO accuracy is a noisy
+estimator at this n.** A first attempt at 0.6 let 3 of 6 fresh random trials through as
+"informative." Sixty trials of pure noise on the real design gave a mean of 0.50 (std 0.12,
+p95 = 0.68); sixty trials of a coherent synthetic respondent gave a median of 0.68 — the two
+distributions overlap substantially at ~25 choices over ~15 attributes, and no threshold
+cleanly separates them. Set to **0.68** deliberately favouring the safe failure mode: a
+false negative falls back to the household's own directly stated budget allocation, already
+a fully legitimate path; a false positive corrupts the ranking with revealed weights that
+only look like findings. That asymmetry, not a belief that 0.68 is uniquely correct, decided
+the number.
+
+**Consequence for Emil specifically.** His trade-off choices came out at cv_accuracy=0.542 —
+not informative. His weights are his stated 100-point budget allocation exactly (cost,
+climate, urban_form, career all 12; safety and health_care 10; the rest 8), not a blend with
+a noisy fit. His ranking changed materially between the two runs: the amenity fix alone
+still left Great Plains/Appalachian small towns dominant because the elicitation was still
+overweighting the miscalibrated arts_rec signal; with both fixes his real top is Harrisonburg
+and Staunton, VA — real Shenandoah Valley cities, "somewhat warmer" than Harrisburg per his
+own anchored answers, with strong healthcare access and social capital. Report republished.
+
+**Two structural findings worth carrying forward**, not specific to Emil:
+- Every future respondent sits in the same p/n≈0.6 regime this analysis was run against, so
+  the fix generalises rather than being tuned to one household's answers.
+- At ~24-28 choices, roughly half of genuinely consistent respondents will still fall back
+  to stated-allocation-only under the 0.68 threshold. That is an accepted, documented
+  trade-off (see the threshold rationale in `elicit.py`), not a remaining bug — but if the
+  trade-off block is ever revisited, more tasks or fewer simultaneous attributes per task
+  would let more real signal clear the bar without loosening the noise threshold.
+
+`tests/test_elicitation_reliability.py` (new, 7 tests) pins both fixes and the calibration
+reasoning as regression guards. Full suite still green; `make audit` still 10/10.
 
 ---
 

@@ -20,25 +20,92 @@ import numpy as np
 class ChoiceFit:
     weights: dict[str, float]           # indicator -> importance, non-negative, sums to 1
     coefficients: dict[str, float]      # signed, before taking magnitude
-    accuracy: float                     # share of choices the fitted model reproduces
+    accuracy: float                     # IN-SAMPLE reproduction — a fit quality diagnostic,
+                                         # never the informativeness gate. See is_informative.
     n_choices: int
     contradictions: list[str] = field(default_factory=list)
+    cv_accuracy: float | None = None    # leave-one-out; the actual informativeness signal
 
     @property
     def is_informative(self) -> bool:
         """Whether the answers actually carry signal.
 
-        Near-chance accuracy means the choices were effectively random — fatigue, or pairs
-        that felt equally good. The weights must then be reported as noise rather than
-        presented as findings.
+        Gated on leave-one-out cross-validated accuracy, never on `accuracy` (in-sample).
+        The trade-off block has ~15 attributes over ~24-25 real choices — enough dimensions
+        relative to data that an unregularized *or* lightly regularized fit can reproduce
+        its own training labels almost regardless of whether the choices were coherent.
+        Measured directly: pure random answers on the real bank design produced in-sample
+        accuracy averaging 0.83-0.95 across trials, comfortably clearing the old 0.65
+        threshold every time. A threshold on the wrong metric is not a safety check.
+
+        Leave-one-out accuracy — refit with one choice held out, predict it, repeat — is
+        the standard remedy and cheap at this sample size. It cannot be inflated by the
+        model's own capacity the way in-sample accuracy can, because each held-out choice
+        was never used to fit the model being tested against it.
+
+        **The threshold is calibrated against the real design's null distribution, not
+        guessed.** At ~24-28 choices, LOO accuracy is itself a noisy estimator — 60 trials
+        of pure random answers on the actual bank produced a mean of 0.50 but a standard
+        deviation of 0.12, with the 95th percentile reaching 0.68. A first attempt at 0.6
+        let three of six random trials through as "informative" in testing. 0.68 keeps the
+        false-positive rate against pure noise near 5%.
+
+        That threshold rejects roughly half of genuinely consistent respondents too — 60
+        trials of a synthetic respondent with a few dominant, realistically-noisy
+        preferences had a median LOO accuracy of 0.68, right at the cutoff. That asymmetry
+        is deliberate rather than a compromise to fix later: the two failure modes are not
+        equally costly. A false negative falls back to the household's own directly stated
+        allocation, which is a fully legitimate, already-supported way to get weights. A
+        false positive corrupts the ranking with revealed weights that only look like
+        findings. Erring toward the safe side costs a warning; erring the other way cost
+        the first real household an amenity indicator with the wrong sign at second-highest
+        weight, presented as their answer.
         """
-        return self.n_choices >= 8 and self.accuracy >= 0.65
+        if self.cv_accuracy is None:
+            return self.n_choices >= 8 and self.accuracy >= 0.65
+        return self.n_choices >= 8 and self.cv_accuracy >= 0.68
 
 
 def _standardize(matrix: np.ndarray) -> np.ndarray:
     spread = matrix.std(axis=0)
     spread[spread == 0] = 1.0
     return (matrix - matrix.mean(axis=0)) / spread
+
+
+def _gradient_ascent(
+    x: np.ndarray, y: np.ndarray, *, iterations: int, learning_rate: float, l2: float
+) -> np.ndarray:
+    beta = np.zeros(x.shape[1])
+    for _ in range(iterations):
+        p = 1.0 / (1.0 + np.exp(-np.clip(x @ beta, -30, 30)))
+        beta += learning_rate * ((x.T @ (y - p)) / len(y) - l2 * beta)
+    return beta
+
+
+def _leave_one_out_accuracy(
+    x_raw: np.ndarray, y: np.ndarray, *, iterations: int, learning_rate: float, l2: float
+) -> float | None:
+    """Refit with each choice held out in turn and predict it. The only honest way to ask
+    "did these answers carry signal" when attributes and choices are close in number,
+    because in-sample accuracy can be high by construction regardless of the answer."""
+    n = len(y)
+    if n < 8:
+        return None
+    correct = 0
+    for holdout in range(n):
+        keep = np.arange(n) != holdout
+        x_train = _standardize(x_raw[keep])
+        beta = _gradient_ascent(
+            x_train, y[keep], iterations=iterations, learning_rate=learning_rate, l2=l2
+        )
+        # The held-out row standardized against the training fold's own mean/spread — using
+        # the full-sample statistics would leak the held-out point into its own prediction.
+        spread = x_raw[keep].std(axis=0)
+        spread[spread == 0] = 1.0
+        x_test = (x_raw[holdout] - x_raw[keep].mean(axis=0)) / spread
+        predicted = float(x_test @ beta > 0)
+        correct += int(predicted == y[holdout])
+    return correct / n
 
 
 def fit_choices(
@@ -48,11 +115,32 @@ def fit_choices(
     directions: dict[str, str],
     iterations: int = 4000,
     learning_rate: float = 0.12,
+    l2: float = 0.3,
 ) -> ChoiceFit:
     """Fit a linear utility over attribute differences by logistic regression.
 
     `directions` maps indicator -> curve, so a lower_better attribute is sign-flipped and
     every coefficient ends up oriented "more of this is better".
+
+    **Regularized, and not optionally.** The trade-off block has ~15 design attributes and
+    produces ~24-25 real choices — p/n near 0.6, well inside the regime where an
+    unregularized fit can perfectly separate the training labels by construction rather than
+    by finding a genuine preference. It did, on the first real household to answer: accuracy
+    came out at exactly 1.00, and the second-highest weight belonged to an indicator whose
+    fitted coefficient had the *wrong sign* — the choices looked like a preference against
+    more arts and recreation venues, which almost certainly reflects that attribute's
+    correlation with cost in the specific pairs shown rather than a real aversion to culture.
+    A perfect-looking fit is the symptom, not the reassurance.
+
+    Adding an L2 penalty and testing it against that respondent's real answers: accuracy
+    fell to a believable 0.88 (21 of 24), the wrong-signed indicator's weight collapsed from
+    second place to a minor factor, and stated climate preferences — reported directly by
+    the household before any of this was built — surfaced into the top weights for the
+    first time instead of being buried under the collinear artifact. `l2=0.3` was the
+    smallest penalty that reached that plateau without flattening every coefficient toward
+    uniform importance (tested from 0.05 to 3.0). `TestEqualPreferences` uses 300 synthetic
+    choices, p/n far below the danger zone, so this barely perturbs a fit that already has
+    enough data to be trusted.
     """
     rows, labels, attributes = [], [], sorted(
         {a["indicator"] for t in tasks for a in t.get("attributes", [])}
@@ -89,16 +177,16 @@ def fit_choices(
     if len(rows) < 4:
         return ChoiceFit({}, {}, 0.0, len(rows), contradictions)
 
-    x = _standardize(np.array(rows))
+    x_raw = np.array(rows)
     y = np.array(labels)
-    beta = np.zeros(x.shape[1])
-
-    for _ in range(iterations):
-        p = 1.0 / (1.0 + np.exp(-np.clip(x @ beta, -30, 30)))
-        beta += learning_rate * (x.T @ (y - p)) / len(y)
+    x = _standardize(x_raw)
+    beta = _gradient_ascent(x, y, iterations=iterations, learning_rate=learning_rate, l2=l2)
 
     predicted = (x @ beta > 0).astype(float)
     accuracy = float((predicted == y).mean())
+    cv_accuracy = _leave_one_out_accuracy(
+        x_raw, y, iterations=iterations, learning_rate=learning_rate, l2=l2
+    )
 
     magnitude = np.abs(beta)
     total = magnitude.sum()
@@ -111,6 +199,7 @@ def fit_choices(
         accuracy=accuracy,
         n_choices=len(rows),
         contradictions=contradictions,
+        cv_accuracy=cv_accuracy,
     )
 
 
