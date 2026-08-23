@@ -447,15 +447,24 @@ indicators:
     curve: higher_better
     direction: universal
     unit: USD
+    quality: substitute
+    quality_note: >
+      CCD current elementary/secondary expenditure over enrolment. SUBSTITUTE for SEDA
+      learning growth, and the most income-confounded of the four: spending tracks the local
+      tax base, so it partly re-measures the cost domain.
 
   - id: edu_student_teacher_ratio
     domain: education
     label: Student-teacher ratio
-    source: nces_ccd
+    source: urban_educationdata
     geo_level: county
     curve: lower_better
     direction: universal
     unit: ratio
+    quality: substitute
+    quality_note: >
+      CCD enrollment over teacher FTE. SUBSTITUTE for SEDA learning growth: an input measure,
+      which says what a district buys rather than what its pupils gain.
 
   - id: edu_graduation_rate
     domain: education
@@ -465,16 +474,24 @@ indicators:
     curve: higher_better
     direction: universal
     unit: share
+    quality: substitute
+    quality_note: >
+      EDFacts adjusted-cohort rate, cohort-weighted from districts to county. SUBSTITUTE for
+      SEDA learning growth: an outcome measure, so more income-confounded than growth.
+      Published as a binned range for small cohorts; bins wider than 20 points are dropped.
 
   - id: edu_district_choice_count
     domain: education
     label: Number of school districts serving the area
-    source: nces_ccd
+    source: urban_educationdata
     geo_level: county
     curve: higher_better
     direction: universal
     unit: count
     notes: Proxy for school choice without moving house.
+    quality: substitute
+    quality_note: >
+      Districts with pupils in the county. SUBSTITUTE, and the weakest: choice is not quality.
 
   # ---------------- family_childcare ----------------
   - id: family_childcare_cost_infant
@@ -705,7 +722,7 @@ indicators:
   - id: sens_partisan_lean
     domain: sensitive
     label: Two-party presidential vote margin, most recent cycle
-    source: medsl_elections
+    source: countypres_mirror
     geo_level: county
     curve: ideal_point
     direction: personal
@@ -716,11 +733,17 @@ indicators:
     notes: >
       Direction-neutral by design. Stored as a signed margin; the household's own curve
       decides whether high, low, or balanced scores well. The registry assumes nothing.
+    quality_note: >
+      Mirror of MIT Election Lab doi:10.7910/DVN/VOQCHQ, which Harvard Dataverse serves
+      only behind a guestbook form. Alaska is excluded: it reports by State House
+      District, and three of those pseudo-FIPS collide with real borough codes -- 02020
+      is Anchorage Municipality and House District 20 at once.
+
 
   - id: sens_religious_adherence
     domain: sensitive
     label: Religious adherents as share of population
-    source: arda_religion
+    source: usreligioncensus
     geo_level: county
     curve: ideal_point
     direction: personal
@@ -728,6 +751,11 @@ indicators:
     unit: share
     sensitive: true
     provisional: true
+    quality_note: >
+      Adherents are counted where a congregation sits, not where members live, so 30 rural
+      counties reported over 100% and were dropped rather than clipped. Measures
+      affiliation, not observance.
+
 
   - id: sens_foreign_born_share
     domain: sensitive

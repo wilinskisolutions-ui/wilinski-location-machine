@@ -351,3 +351,68 @@ class TestSensitiveOptIn(unittest.TestCase):
         excluded = " ".join(report.warnings)
         for indicator in ("sens_partisan_lean", "sens_foreign_born_share"):
             self.assertIn(indicator, excluded)
+
+
+class TestKnockoutsReduceToNumbers(unittest.TestCase):
+    """A deal-breaker is compared against a number, so every route to one must produce one.
+
+    `q_max_hub_drive` asked a sensible human question — "the longest drive to an airport
+    you'd accept" — and mapped it straight to a mileage threshold. The answer reached the
+    scoring engine as the string "Under an hour", failed to parse, and the filter never ran.
+    Found by driving two complete profiles through the real API for the first time.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.questions = generate.build()
+        cls.knockouts = [
+            q for q in cls.questions if q.get("maps_to", {}).get("kind") == "knockout"
+        ]
+
+    def test_there_is_at_least_one_knockout_to_check(self):
+        self.assertTrue(self.knockouts)
+
+    def test_every_knockout_answer_can_become_a_number(self):
+        for q in self.knockouts:
+            with self.subTest(question=q["id"]):
+                if q["type"] == "number":
+                    continue
+                values = q.get("option_values")
+                self.assertIsNotNone(
+                    values,
+                    f"{q['id']} offers phrases but declares no option_values, so its "
+                    "deal-breaker can never be applied",
+                )
+                for option in q["options"]:
+                    self.assertIn(option, values, f"{q['id']}: {option!r} has no value")
+                    target = values[option]
+                    if target is not None:
+                        self.assertIsInstance(target, (int, float))
+
+    def test_a_phrase_answer_is_translated_before_it_reaches_the_engine(self):
+        from wlm.profile import build_profile
+
+        session = Session(person="emil", sessions_dir=Path(tempfile.mkdtemp()))
+        session.answers["q_max_hub_drive"] = "Under an hour"
+        rule = next(
+            k for k in build_profile(session, self.questions)["knockouts"]
+            if k["from"] == "q_max_hub_drive"
+        )
+        self.assertIsInstance(rule["value"], float)
+        self.assertEqual(rule["value"], 55.0)
+
+    def test_no_limit_produces_no_knockout_at_all(self):
+        from wlm.profile import build_profile
+
+        session = Session(person="emil", sessions_dir=Path(tempfile.mkdtemp()))
+        session.answers["q_max_hub_drive"] = "Distance doesn't matter much"
+        rules = build_profile(session, self.questions)["knockouts"]
+        self.assertFalse([k for k in rules if k["from"] == "q_max_hub_drive"])
+
+    def test_an_untranslatable_answer_raises_rather_than_being_skipped(self):
+        from wlm.profile import OptInError, build_profile
+
+        session = Session(person="emil", sessions_dir=Path(tempfile.mkdtemp()))
+        session.answers["q_max_hub_drive"] = "Whenever, honestly"
+        with self.assertRaises(OptInError):
+            build_profile(session, self.questions)

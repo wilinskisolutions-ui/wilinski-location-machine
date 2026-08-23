@@ -1,5 +1,33 @@
 # Running the questionnaire
 
+There are two ways to answer the same 56 questions. Pick one each — you do not need to do
+both, and answers do not carry across.
+
+| | Where answers live | Best for |
+|---|---|---|
+| **Laptop** (`make questionnaire`) | Only on that machine | Keeping everything local |
+| **Phone** (published artifact) | On claude.ai | Answering in odd ten-minute gaps |
+
+**One page per person, on purpose.** Whichever route you use, Emil and Winsor answer
+separately and neither sees the other's answers until both have finished. That is the whole
+reason the ranking can report where you disagree instead of averaging it away.
+
+## On a phone
+
+`make phone-pages` writes one page per person, which then gets published. Each person opens
+their own link. Progress saves as you tap, so you can close it and come back.
+
+There is a practice page too — click through as much as you like; nothing on it counts.
+
+At the end, **Save my answers as a file** hands you a JSON file. That is the escape hatch:
+if the page cannot save on its own, send that file back and it lands in the pipeline
+exactly the same way.
+
+*The trade:* answers taken this way are stored on claude.ai rather than staying on your
+laptop. The local route below avoids that entirely.
+
+## On the laptop
+
 It runs on your own laptop. Nothing is uploaded, and the server listens on loopback only,
 so it is reachable from that machine and nowhere else.
 

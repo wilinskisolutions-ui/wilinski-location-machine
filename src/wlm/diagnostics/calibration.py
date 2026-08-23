@@ -121,7 +121,18 @@ def build(person: str, *, write: bool = True) -> str:
         "",
     ]
     if rho is None:
-        verdict = "Not enough data."
+        # Say which of the two reasons it is. "Not enough data" reads as a coverage gap
+        # when the real problem is usually that every place got the same score, and the two
+        # call for completely different responses.
+        spread = len({r for _, r, _ in paired})
+        verdict = (
+            f"Every one of the {len(paired)} rated places got the same score, so there is no "
+            "ordering to compare against. Rate them relative to each other — the point is "
+            "which you would rather live in, not whether each is good."
+            if spread <= 1 else
+            f"Only {len(paired)} places had both a rating and enough data to score. "
+            "Rate more of the list, including places you would not move to."
+        )
     elif rho >= 0.6:
         verdict = ("The weights reproduce judgements already held. That is the green light for "
                    "trusting a ranking built on them.")
@@ -133,15 +144,21 @@ def build(person: str, *, write: bool = True) -> str:
                    "ranking built on them yet. Either the questionnaire measured the wrong "
                    "thing, or the ratings encode something not in the data at all — which is "
                    "itself worth knowing.")
-    lines += [verdict, "", "## Largest disagreements", "",
-              "| Place | Rated | Model rank | Rating rank |", "|---|---|---|---|"]
-    for geo_id, rating, _score in misses[:5]:
-        lines.append(
-            f"| {names.get(geo_id, geo_id)} | {rating:.0f}/10 | "
-            f"{by_score[geo_id] + 1} | {by_rating[geo_id] + 1} |"
-        )
-    lines += ["", "A place rated far above where the model puts it usually means something "
-              "matters that the indicators do not capture. That gap is the finding.", ""]
+    lines += [verdict, ""]
+
+    # The disagreement table only means anything once the ratings carry an order. Printing
+    # it under "correlation unavailable" presented rank noise as a finding, complete with a
+    # paragraph explaining how to interpret it.
+    if rho is not None:
+        lines += ["## Largest disagreements", "",
+                  "| Place | Rated | Model rank | Rating rank |", "|---|---|---|---|"]
+        for geo_id, rating, _score in misses[:5]:
+            lines.append(
+                f"| {names.get(geo_id, geo_id)} | {rating:.0f}/10 | "
+                f"{by_score[geo_id] + 1} | {by_rating[geo_id] + 1} |"
+            )
+        lines += ["", "A place rated far above where the model puts it usually means something "
+                  "matters that the indicators do not capture. That gap is the finding.", ""]
 
     text = "\n".join(lines)
     if write:

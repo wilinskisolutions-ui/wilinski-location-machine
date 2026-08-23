@@ -197,15 +197,42 @@ def build_profile(session, questions: list[dict]) -> dict:
         }
 
     # --- knockouts ---
+    #
+    # A deal-breaker is compared against a number, so an answer that is a phrase has to
+    # declare what number it means. `q_max_hub_drive` offered "Under an hour" and mapped
+    # straight to a mileage threshold: the filter reached the engine as a string, failed
+    # to parse, and never ran. The mapping lives in the bank next to the options it
+    # translates, so rewording one cannot quietly disconnect it.
     knockouts = []
     for q in questions:
         target = q.get("maps_to", {})
         if target.get("kind") != "knockout":
             continue
         value = answers.get(q["id"])
-        if value not in (None, ""):
-            knockouts.append({"indicator": target["target"], "op": target.get("op", "max"),
-                              "value": value, "from": q["id"]})
+        if value in (None, ""):
+            continue
+
+        option_values = q.get("option_values")
+        if option_values is not None:
+            if value not in option_values:
+                raise OptInError(
+                    f"{q['id']}: answer {value!r} has no numeric equivalent; add it to "
+                    "option_values in questionnaire/bank.yaml"
+                )
+            value = option_values[value]
+            if value is None:  # an explicit "no limit"
+                continue
+
+        try:
+            value = float(value)
+        except (TypeError, ValueError):
+            raise OptInError(
+                f"{q['id']}: knockout on '{target['target']}' cannot use answer {value!r} — "
+                "a deal-breaker must reduce to a number"
+            ) from None
+
+        knockouts.append({"indicator": target["target"], "op": target.get("op", "max"),
+                          "value": value, "from": q["id"]})
 
     # --- sensitive: opt-in only (Principle 10) ---
     #

@@ -68,7 +68,13 @@ sources:
 
   # --- sensitive (weight 0 by default) ---
   - {id: medsl_elections,    name: MIT Election Lab county returns, url: "https://dataverse.harvard.edu",                          geo_levels: [county],         vintage: "2000-2024",       license: CC0}
+  # Mirror actually fetched: Dataverse gates the MIT file behind a guestbook form. The DOI
+  # is recorded in the ingest module so provenance names both records.
+  - {id: countypres_mirror,  name: County presidential returns (mirror of MIT DVN/VOQCHQ), url: "https://raw.githubusercontent.com/tonmcg/US_County_Level_Election_Results_08-24", geo_levels: [county], vintage: "2024", license: MIT}
   - {id: arda_religion,      name: ARDA US Religion Census,         url: "https://www.thearda.com",                               geo_levels: [county],         vintage: "2020",            license: "Free w/ registration + citation"}
+  # Fetched here instead: ARDA builds its archive pages client-side and exposes no link a
+  # script can follow. The Religion Census publishes the same tabulation as a workbook.
+  - {id: usreligioncensus,   name: 2020 US Religion Census county summary, url: "https://www.usreligioncensus.org", geo_levels: [county], vintage: "2020", license: "Free w/ citation"}
 
   # --- hype index (diagnostic only, never an input) ---
   - {id: irs_migration,      name: IRS SOI migration data,          url: "https://www.irs.gov/statistics/soi-tax-stats-migration-data", geo_levels: [county],    vintage: "2023",            license: PD}

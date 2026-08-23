@@ -78,6 +78,23 @@ def build(
             )
         lines.append("")
 
+    # Populated is not the same as measuring what was specified. Four education indicators
+    # stand in for SEDA learning growth because SEDA is form-gated, and they are weaker on
+    # exactly the axis that decision was taken to avoid. A reader who sees "education 4 of 6"
+    # and nothing else would draw the wrong conclusion.
+    substitutes = [i for i in reg if i.get("quality") == "substitute"]
+    if substitutes:
+        lines += [
+            "## Populated, but not with what was specified",
+            "",
+            "These carry real data and are weaker than the measure the charter asked for.",
+            "They are labelled `quality: substitute` in the registry with the reason attached.",
+            "",
+        ]
+        for i in sorted(substitutes, key=lambda x: x["id"]):
+            note = " ".join((i.get("quality_note") or "").split())
+            lines += [f"**`{i['id']}`** — {labels.get(i['domain'], i['domain'])}", "", note, ""]
+
     if cov is not None:
         lines += ["## Per-place data coverage", ""]
         for level in ("county", "place"):

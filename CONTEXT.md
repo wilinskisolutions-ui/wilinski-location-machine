@@ -7,9 +7,12 @@
 
 **Current phase:** Phase 4 — Scoring · **Status:** complete. Engine, two-stage ranking, rank
 bands, report and all four anti-bias diagnostics run end to end. **All 10 GOAL.md principles
-pass** (`output/audit.md`). Seventeen bugs found and fixed across three sweeps.
+pass** (`output/audit.md`). **54 of 65 indicators populated; no scoring domain is empty.**
+Four bug sweeps so far; each found bugs in a path nothing had exercised, and the rate is
+not yet falling.
 **Blocking a real ranking:** two completed profiles. Everything in `output/` was produced
 from placeholder weights and says so on its face.
+**Answering:** the questionnaire now also runs as a phone artifact, one page per person.
 **Last updated:** 2026-08-23
 
 ---
@@ -426,6 +429,70 @@ and both sweeps before this one found bugs at a similar rate. The rate is not ye
 
 ---
 
+### 2026-08-23 — The dead domains, the phone, and a fourth sweep
+
+Emil asked for three things: answer on a phone, score education and political climate some
+other way, and one more bug sweep.
+
+**Education, childcare and the sensitive layer are no longer dead.** 46 of 65 indicators
+populated became **54 of 65**, and *no scoring domain is empty any more*.
+
+| Domain | Was | Now | Source |
+|---|---|---|---|
+| education | 0/6 | **4/6** | Urban Institute Education Data API — CCD directory, CCD finance, EDFacts graduation |
+| family_childcare | 0/2 | **2/2** | DOL National Database of Childcare Prices |
+| sensitive | 1/3 | **3/3** | county presidential returns (mirror), 2020 US Religion Census |
+
+**The education numbers are substitutes, and the registry says so.** Phase 1 chose SEDA
+*learning growth* because proficiency and spending largely measure how wealthy the
+neighbours are. SEDA is still JavaScript-gated and Emil chose not to fetch it by hand, so
+graduation rate, staffing ratio and spending stand in — each carrying `quality: substitute`
+and a `quality_note` naming what it is weaker than. SEDA remains the documented upgrade.
+
+**Two sources are behind sign-up forms and were routed around, not faked.** MIT's county
+returns (`doi:10.7910/DVN/VOQCHQ`) need a Dataverse guestbook response; a long-standing
+public mirror carries the same returns and is registered under its own source id with the
+DOI recorded beside it. ARDA builds its archive pages client-side; the Religion Census
+publishes the same tabulation directly as a workbook.
+
+**Eight more bugs, every one caught by checking a number against something known.**
+
+| # | Bug | The wrong number |
+|---|---|---|
+| 1 | Enrollment summed over all districts, teachers only over those reporting | Washoe County NV at **3,520 pupils per teacher** |
+| 2 | A county graduation rate computed from whichever districts happened to file | Pima County, 1.08m people, **34% — from one school of 68 pupils** |
+| 3 | Zero districts reported as 0 rather than missing | James City County VA ranked last on choice for a Virginia filing convention |
+| 4 | EDFacts bins as wide as 0-49 treated as measurements | 603 midpoints that were arithmetic, not data |
+| 5 | Alaska's House-district pseudo-FIPS collide with borough codes | **02020 is Anchorage Municipality and House District 20 at once** |
+| 6 | A sheet column named "as % of Population" holds a 0-1 fraction | national religious adherence at a median of **0.5%** |
+| 7 | Congregations counted where they sit, not where members live | King County TX at **452% adherence** of its 215 residents |
+| 8 | A knockout question offering phrases mapped straight to a numeric threshold | "Under an hour" reached the engine as a string; **the deal-breaker never ran** |
+
+Bug 8 is the one the sweep was for. Driving two complete profiles through the real HTTP API
+— never done before — exercised `build_profile → write_profile → load_profile → score`,
+`joint()`, calibration and knockouts for the first time. The fix follows the sensitive
+opt-in pattern: the bank declares `option_values` next to the options it translates, and an
+unmapped answer raises rather than being skipped.
+
+**Also fixed:** calibration printed a "largest disagreements" table, with a paragraph on how
+to read it, underneath "correlation unavailable" — presenting rank noise as a finding. It
+now suppresses the table and says which of the two reasons applies.
+
+**The phone.** `make questionnaire` still runs locally and is unchanged. Alongside it,
+`wlm.questionnaire.artifact` bakes the 56 questions into a self-contained page, **one per
+person** — that separation is Principle 8, since with the artifact capability a page's
+markup *is* the shared document and one page for both would show Winsor what Emil picked.
+Storage is layered: `localStorage` always, the artifact capability where granted, and a
+`downloads` export as the escape hatch. Answers come back via
+`artifact.answers_from_page()` and `artifact.land()`, which refuses practice for the same
+reason `Session.finish` does. **The trade is real and was Emil's call:** answers stored this
+way leave the laptop.
+
+The first phone test found the page laying itself out at 980px and scaling down — the
+artifact wrapper owns `<head>`, so the page now adds its own viewport meta.
+
+---
+
 ## Data inventory
 
 Nothing ingested yet — Phase 0 built no pipeline by design. `docs/data-sources.md` holds
@@ -457,11 +524,11 @@ that will actually resolve them. A moved URL gets corrected there and in
 | Metric | Count |
 |---|---|
 | Domains defined | 13 — 11 scoring, 2 questionnaire-only (`config/domains.yaml`) |
-| Sources registered | 45 (`config/sources.yaml`) |
+| Sources registered | 47 (`config/sources.yaml`) |
 | Indicators registered | 65 (`config/indicators.yaml`) |
 | Indicators carrying provisional curve params | 14 — placeholders awaiting elicitation, per `make validate` |
-| Ingest modules written | 14 |
-| **Indicators populated with real data** | **46 of 65** — see `output/coverage.md` for the other 19 |
+| Ingest modules written | 18 |
+| **Indicators populated with real data** | **54 of 65** — see `output/coverage.md` for the other 11; no scoring domain is empty |
 | Universe | **9,885** — 3,144 counties + 6,741 places (4,811 incorporated, 1,930 CDP) |
 
 Validate with `make validate`; the invariants are enforced mechanically and the negative
@@ -499,10 +566,13 @@ extra — it drives real Chromium through Playwright, and skips itself when eith
 
 ## Next actions
 
-1. **Emil practises, then both answer.** `make questionnaire PERSON=practice`, then
-   `PERSON=emil`, then `PERSON=winsor`. See `questionnaire/HOW-TO-RUN.md`. ~45 minutes each.
-   **Now safe to take** — the weight-corrupting bugs are fixed. Nothing else can proceed
-   until this happens.
+1. **Emil practises, then both answer.** Two routes, same 56 questions:
+   * **Phone** — one published artifact per person, plus a practice page. Answers stay
+     separate because the pages are separate.
+   * **Laptop** — `make questionnaire PERSON=practice`, then `PERSON=emil`, then
+     `PERSON=winsor`. See `questionnaire/HOW-TO-RUN.md`. Answers never leave the machine.
+
+   ~45 minutes each. **Now safe to take.** Nothing else can proceed until this happens.
 2. **`make calibrate`** — if the elicited weights do not reproduce their own ratings of
    places they know, the weights are wrong and no ranking should be trusted yet.
 3. **Re-run the chain on real weights** once the profiles exist:

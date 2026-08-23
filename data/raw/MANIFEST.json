@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated_at": "2026-08-23T02:52:53+00:00",
+  "updated_at": "2026-08-23T16:16:49+00:00",
   "entries": [
     {
       "source_id": "bea_rpp",
@@ -223,6 +223,39 @@
       "note": null
     },
     {
+      "source_id": "countypres_mirror",
+      "url": "https://raw.githubusercontent.com/tonmcg/US_County_Level_Election_Results_08-24/master/2020_US_County_Level_Presidential_Results.csv",
+      "path": "countypres_mirror/2020_US_County_Level_Presidential_Results.csv",
+      "retrieved_at": "2026-08-23T16:13:42+00:00",
+      "sha256": "98c7412018bfaa2a9ac4fea088fd5bb4bbf1c5f2b93f524da574a2d83c25ccbe",
+      "bytes": 347884,
+      "synthetic": false,
+      "vintage": null,
+      "note": null
+    },
+    {
+      "source_id": "countypres_mirror",
+      "url": "https://raw.githubusercontent.com/tonmcg/US_County_Level_Election_Results_08-24/master/2024_US_County_Level_Presidential_Results.csv",
+      "path": "countypres_mirror/2024_US_County_Level_Presidential_Results.csv",
+      "retrieved_at": "2026-08-23T16:13:42+00:00",
+      "sha256": "538a8fbe2d7a20524b049dd1b3b9ec7e215c4433d99f91fbd7b0dea05270136a",
+      "bytes": 352475,
+      "synthetic": false,
+      "vintage": null,
+      "note": null
+    },
+    {
+      "source_id": "dol_childcare",
+      "url": "https://www.dol.gov/sites/dolgov/files/WB/media/nationaldatabaseofchildcareprices.xlsx",
+      "path": "dol_childcare/nationaldatabaseofchildcareprices.xlsx",
+      "retrieved_at": "2026-08-23T16:16:40+00:00",
+      "sha256": "f6d96527ae6fe3d47b60b482c30ffab41e38d833c1bef972b6761b605ab14ca8",
+      "bytes": 35115212,
+      "synthetic": false,
+      "vintage": null,
+      "note": null
+    },
+    {
       "source_id": "epa_aqs",
       "url": "https://aqs.epa.gov/aqsweb/airdata/annual_conc_by_monitor_2024.zip",
       "path": "epa_aqs/annual_conc_by_monitor_2024.zip",
@@ -273,6 +306,17 @@
       "retrieved_at": "2026-08-22T23:29:47+00:00",
       "sha256": "9387cdb38df5bd664da823f8ccb69fdd9b33a1888f5b7cca09c34a3cd9ff59f9",
       "bytes": 1127225,
+      "synthetic": false,
+      "vintage": null,
+      "note": null
+    },
+    {
+      "source_id": "usreligioncensus",
+      "url": "https://www.usreligioncensus.org/sites/default/files/2023-06/2020_USRC_Summaries.xlsx",
+      "path": "usreligioncensus/2020_USRC_Summaries.xlsx",
+      "retrieved_at": "2026-08-23T16:16:49+00:00",
+      "sha256": "f6ba1441ca21eb4e9cfceea61718e3c09b90da355389576dd9eb6c1962830915",
+      "bytes": 525846,
       "synthetic": false,
       "vintage": null,
       "note": null

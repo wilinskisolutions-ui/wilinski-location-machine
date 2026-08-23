@@ -49,7 +49,7 @@ make data       # download every source (~250MB) into data/raw with checksums
 make universe   # build the candidate universe
 make features   # ingest everything and compute percentiles
 make coverage   # report what has data and what does not, with reasons
-make questionnaire PERSON=practice   # try the questionnaire safely
+make questionnaire PERSON=practice   # try the questionnaire safely (localhost)
 make calibrate  # check elicited weights against places they already know
 make score      # rank counties, then towns inside the winners, with rank bands
 make diagnostics # hype residual, blind export, political with/without
@@ -66,7 +66,7 @@ synthetic input.
 ## Status
 
 **Phase 4 — Engine: built.** A real universe of **9,885 candidates** (3,144 counties, 6,741
-places) with **46 of 65 indicators populated** from live federal data. The chain runs end to
+places) with **54 of 65 indicators populated** from live federal data. The chain runs end to
 end: scoring, rank bands, the anti-bias diagnostics, and a readable report. `make audit`
 reports **10 of 10 principles passing**. Every remaining data gap has a named reason in
 `output/coverage.md`.
@@ -78,7 +78,7 @@ a placeholder nobody chose, and the pipeline says so at every stage that uses on
 |---|---|---|
 | 0 — Charter | Principles, methodology, registries, scaffolding | done |
 | 1 — Universe | Fixed candidate set, pipeline proven on 3-4 sources | done |
-| 2 — Ingest | 46 of 65 indicators on real data, coverage report | done |
+| 2 — Ingest | 54 of 65 indicators on real data, no empty domain | done |
 | 3 — Questionnaire | Local instrument, elicitation, calibration | **built, awaiting answers** |
 | 4 — Engine | Scoring, rank bands, anti-bias diagnostics, report | built, running on placeholders |
 | 5 — Shortlist | Top ~25 deep dive, blind evaluation | |

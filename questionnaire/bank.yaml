@@ -100,6 +100,15 @@ sections:
         text: What's the longest drive to an airport you'd accept for a trip to Europe?
         type: choice
         options: ["Under an hour", "Up to 2 hours", "Up to 3 hours", "Distance doesn't matter much"]
+        # A knockout compares against a number, and these are phrases. Without the mapping
+        # the filter was silently unusable: it reached the scoring engine as the string
+        # "Under an hour", failed float(), and the deal-breaker never ran. Miles at roughly
+        # 55mph; the last option means no limit rather than a very large one.
+        option_values:
+          "Under an hour": 55
+          "Up to 2 hours": 110
+          "Up to 3 hours": 165
+          "Distance doesn't matter much": null
         maps_to: {kind: knockout, target: air_europe_hub_distance, op: max}
 
       - id: q_dealbreakers

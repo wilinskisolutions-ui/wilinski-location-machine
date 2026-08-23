@@ -187,6 +187,8 @@ indicators**; the household's preference curve decides direction, the registry a
 |---|---|---|---|---|
 | MIT Election Lab county returns | `dataverse.harvard.edu` (MEDSL) | county | 2000–2024 | CC0 |
 | ARDA US Religion Census | `thearda.com` | county | 2020 | Free w/ registration + citation |
+| 2020 US Religion Census county summary | `usreligioncensus.org` | county | 2020 | Free w/ citation |
+| County presidential returns | `raw.githubusercontent.com` | county | 2024 | MIT |
 | ACS ancestry, foreign-born, language | `api.census.gov` | county, place | 2020–2024 5-yr | PD |
 | State policy indices | compiled, cited per index | state | current | varies |
 

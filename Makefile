@@ -2,7 +2,7 @@ PY := PYTHONPATH=src python3
 PYTEST := PYTHONPATH=src:tests python3
 
 .PHONY: help validate test demo data universe features score diagnostics report \
-	audit calibrate coverage questionnaire clean
+	audit calibrate coverage questionnaire phone-pages clean
 
 help:
 	@echo "validate     Check config registries against the GOAL.md principles"
@@ -11,6 +11,7 @@ help:
 	@echo "coverage     Report what has data and what does not, with reasons"
 	@echo ""
 	@echo "questionnaire            Run it locally.  PERSON=practice|emil|winsor  RESET=1"
+	@echo "phone-pages  Build the questionnaire as one page per person, for publishing"
 	@echo "calibrate    Check the elicited weights against places they already know"
 	@echo "audit        Check the system against the ten principles in GOAL.md"
 	@echo "data         Download + checksum all sources (needs network - see docs/network-allowlist.md)"
@@ -28,6 +29,11 @@ test:
 
 PERSON ?= practice
 RESET ?=
+
+phone-pages:
+	@$(PY) -c "from wlm.questionnaire import artifact; \
+	  [print('  wrote', artifact.write_page(p)) for p in ('practice','emil','winsor')]"
+	@echo "  publish each with the Artifact tool - one page per person keeps answers separate"
 
 questionnaire:
 	@$(PY) -m wlm.questionnaire.server --person $(PERSON) $(if $(RESET),--reset,)

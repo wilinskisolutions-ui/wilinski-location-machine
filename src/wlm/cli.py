@@ -112,6 +112,18 @@ DOWNLOADS: dict[str, list[str]] = {
     # place is already getting, so that a ranking can be checked against it. It is never
     # a scoring input — penalising popularity would be its own bias, and the goal is to
     # find good places the internet ignores, not to prefer obscurity for its own sake.
+    # Sensitive layer, opt-in only. Mirrors MIT doi:10.7910/DVN/VOQCHQ, which Dataverse
+    # serves only behind a guestbook form.
+    "countypres_mirror": [
+        "https://raw.githubusercontent.com/tonmcg/US_County_Level_Election_Results_08-24/master/2024_US_County_Level_Presidential_Results.csv",
+        "https://raw.githubusercontent.com/tonmcg/US_County_Level_Election_Results_08-24/master/2020_US_County_Level_Presidential_Results.csv",
+    ],
+    "usreligioncensus": [
+        "https://www.usreligioncensus.org/sites/default/files/2023-06/2020_USRC_Summaries.xlsx",
+    ],
+    "dol_childcare": [
+        "https://www.dol.gov/sites/dolgov/files/WB/media/nationaldatabaseofchildcareprices.xlsx",
+    ],
     "irs_migration": [
         "https://www.irs.gov/pub/irs-soi/countyinflow2122.csv",
         "https://www.irs.gov/pub/irs-soi/countyoutflow2122.csv",
@@ -124,6 +136,7 @@ API_SOURCES = {
     "cdc_wonder": "https://data.cdc.gov/resource/489q-934x.json",
     "bts_intl": "https://data.transportation.gov/resource/xgub-n9bw.json",
     "fema_nri": "arcgis",
+    "urban_educationdata": "https://educationdata.urban.org/api/v1/school-districts",
 }
 
 
@@ -229,8 +242,9 @@ def stage_features(args) -> int:
     from wlm.features.build import build as build_features
     from wlm.geo import read_cbsa_delineation, read_population_centroids
     from wlm.ingest import (
-        bea_rpp, bls_qcew, bts_intl, cdc_mortality, census_acs, census_cbp,
-        chr_rwjf, epa_aqs, fars, fema_nri, noaa_normals, zillow,
+        bls_qcew, bts_intl, cdc_mortality, census_acs, census_cbp,
+        bea_rpp, chr_rwjf, county_elections, dol_childcare, epa_aqs, fars,
+        fema_nri, noaa_normals, religion_census, urban_education, zillow,
     )
     from wlm.paths import PROCESSED, RAW, UNIVERSE
 
@@ -303,6 +317,33 @@ def stage_features(args) -> int:
     injury, istats = cdc_mortality.ingest(RAW / "cdc_wonder" / "county_injury_2023.json")
     frames.append(injury)
     print(f"  injury/cdc {injury.height:>7,} rows  (firearm + overdose deaths)")
+
+    schools, sstats = urban_education.ingest(RAW / "urban_educationdata")
+    frames.append(schools)
+    print(f"  schools    {schools.height:>7,} rows  ({sstats['counties']:,} counties; "
+          f"{sstats['sentinels_rejected']:,} withheld cells rejected, "
+          f"{sstats['grad_rates_dropped_unrepresentative']} grad rates too thin to represent "
+          f"their county)")
+
+    votes, vstats = county_elections.ingest(RAW / "countypres_mirror")
+    frames.append(votes)
+    print(f"  elections  {votes.height:>7,} rows  ({vstats['counties']:,} counties; "
+          f"Alaska excluded - it reports by House district, and 02020 is both Anchorage "
+          f"and District 20)")
+
+    faith, fstats = religion_census.ingest(
+        RAW / "usreligioncensus" / "2020_USRC_Summaries.xlsx"
+    )
+    frames.append(faith)
+    print(f"  religion   {faith.height:>7,} rows  ({fstats['counties']:,} counties; "
+          f"{fstats['over_100pct_dropped']} over 100% adherence dropped)")
+
+    care, cstats = dol_childcare.ingest(
+        RAW / "dol_childcare" / "nationaldatabaseofchildcareprices.xlsx"
+    )
+    frames.append(care)
+    print(f"  childcare  {care.height:>7,} rows  ({cstats['counties']:,} counties, "
+          f"{cstats['year']} prices annualised)")
 
     cbsa = read_cbsa_delineation(RAW / "census_cbsa" / "list1_2023.xlsx")
     prices, pstats = bea_rpp.ingest(RAW / "bea_rpp" / "MARPP.zip", cbsa)
