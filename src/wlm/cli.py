@@ -457,13 +457,13 @@ def stage_score(args) -> int:
     """Rank counties, then places inside the winners, and band every rank."""
     import polars as pl
 
+    from wlm.ingest.base import registry as load_registry
     from wlm.paths import FEATURES, PROCESSED, UNIVERSE
-    from wlm.report.build import _registry
     from wlm.scoring.engine import apply_knockouts, sensitivity, two_stage
 
     features = pl.read_parquet(FEATURES)
     universe = pl.read_parquet(UNIVERSE)
-    registry = _registry()
+    registry = load_registry()
     names = dict(universe.select(["geo_id", "name"]).iter_rows())
 
     for profile in _profiles_or_placeholder(args):
@@ -484,7 +484,9 @@ def stage_score(args) -> int:
         for rule in report.knockouts:
             print(f"  knockout {rule['indicator']} {rule['op']} {rule['value']:,.0f} "
                   f"removed {rule['removed']:,} (best: {rule['best_removed']})")
-        for warning in report.warnings:
+        # two_stage appends the county pass and the place pass, which warn about the same
+        # data-less domains twice. Say each thing once.
+        for warning in dict.fromkeys(report.warnings):
             print(f"  warning: {warning}")
     return 0
 
@@ -503,7 +505,7 @@ def stage_report(args) -> int:
         print(f"{report.person}: wrote {path}")
         print(f"  {len(report.counties.rows)} counties, {len(report.places.rows)} towns, "
               f"{flips} labelled coin flips")
-        for warning in report.warnings[:6]:
+        for warning in list(dict.fromkeys(report.warnings))[:6]:
             print(f"  warning: {warning}")
     return 0
 

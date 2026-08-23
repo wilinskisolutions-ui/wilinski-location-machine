@@ -104,8 +104,9 @@ class TestRendering(unittest.TestCase):
 
     def test_the_band_is_drawn_not_just_stated(self):
         page = render_html(self._report([_banded_row()]))
-        self.assertIn('class="band"', page)
-        self.assertIn("anywhere from", page)
+        self.assertIn('class="rail"', page)
+        self.assertIn("<em>band</em>", page)
+        self.assertIn('aria-label="ranks', page, "the band needs a text equivalent too")
 
     def test_a_wide_band_is_labelled_a_coin_flip(self):
         wide = _banded_row(rank_p05=4, rank_p95=200, rank_spread=196, coin_flip=True)
@@ -130,14 +131,37 @@ class TestRendering(unittest.TestCase):
     def test_the_page_says_what_it_does_not_know(self):
         page = render_html(self._report([_banded_row()]))
         self.assertIn("does not know", page)
-        self.assertIn("Weights used", page)
+        self.assertIn("Weight per area", page)
+        self.assertIn("Warnings from this run", page)
 
-    def test_the_page_is_theme_aware_and_self_contained(self):
+    def test_the_page_is_theme_aware(self):
+        """Three states, not two: an explicit choice each way, and the unstamped default
+        where only prefers-color-scheme separates them."""
         page = render_html(self._report([_banded_row()]))
         self.assertIn("prefers-color-scheme", page)
         self.assertIn('data-theme="dark"', page)
-        for remote in ("http://", "https://", "src="):
-            self.assertNotIn(remote, page, "the page must not reach for anything external")
+        self.assertIn(':root:not([data-theme="light"])', page)
+
+    def test_every_colour_token_is_defined_before_any_theme_block(self):
+        """A token defined only inside a media query renders one theme's text on the
+        other theme's ground."""
+        import re
+
+        page = render_html(self._report([_banded_row()]))
+        base = page.split("body {")[0]
+        defined = set(re.findall(r"(--[a-z-]+):", base))
+        used = set(re.findall(r"var\((--[a-z-]+)\)", page))
+        self.assertEqual(used - defined, set(), "tokens used but never defined on :root")
+
+    def test_nothing_external_loads_except_the_font_host(self):
+        import re
+
+        page = render_html(self._report([_banded_row()]))
+        hosts = set(re.findall(r"https?://([a-z0-9.-]+)", page))
+        self.assertTrue(
+            hosts <= {"fonts.googleapis.com", "fonts.gstatic.com"},
+            f"the page reaches for a blocked host: {sorted(hosts)}",
+        )
 
     def test_a_placeholder_ranking_says_so_unmissably(self):
         """A ranking built on weights nobody chose looks exactly like one built on their

@@ -28,9 +28,10 @@ import yaml
 from wlm.paths import CONFIG, OUTPUT, PROCESSED, UNIVERSE
 from wlm.units import fmt
 
-# Columns that identify a place, and must never survive the strip.
-IDENTIFYING = ("geo_id", "name", "state_usps", "state_fips", "county_geoid", "lat", "lon")
-
+# The export is built from an allowlist rather than by removing identifying columns: a
+# profile carries only what `PROFILE_INDICATORS` names, so a new column added to the
+# universe cannot leak by default. `find_leaks` then checks the result anyway.
+#
 # Indicators worth showing a human deciding blind. Anything whose value effectively names
 # the place — a state-level tax rate, a single-metro airport count — stays out.
 PROFILE_INDICATORS = (

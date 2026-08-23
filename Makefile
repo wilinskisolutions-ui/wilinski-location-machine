@@ -1,7 +1,8 @@
 PY := PYTHONPATH=src python3
 PYTEST := PYTHONPATH=src:tests python3
 
-.PHONY: help validate test data universe features score diagnostics report clean
+.PHONY: help validate test demo data universe features score diagnostics report \
+	audit calibrate coverage questionnaire clean
 
 help:
 	@echo "validate     Check config registries against the GOAL.md principles"

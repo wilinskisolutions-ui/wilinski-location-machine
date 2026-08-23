@@ -5,10 +5,12 @@
 > is the project's working memory: a session that reads it should be able to resume cold
 > without re-deriving anything or re-asking a settled question.
 
-**Current phase:** Phase 4 — Scoring · **Status:** engine built; **7 bugs found and fixed
-by audit**; 9 of 10 GOAL.md principles pass (`output/audit.md`)
-**Blocking a real ranking:** two completed profiles. The questionnaire is now safe to take.
-**Last updated:** 2026-08-22
+**Current phase:** Phase 4 — Scoring · **Status:** complete. Engine, two-stage ranking, rank
+bands, report and all four anti-bias diagnostics run end to end. **All 10 GOAL.md principles
+pass** (`output/audit.md`). Seventeen bugs found and fixed across three sweeps.
+**Blocking a real ranking:** two completed profiles. Everything in `output/` was produced
+from placeholder weights and says so on its face.
+**Last updated:** 2026-08-23
 
 ---
 
@@ -455,15 +457,16 @@ that will actually resolve them. A moved URL gets corrected there and in
 | Metric | Count |
 |---|---|
 | Domains defined | 13 — 11 scoring, 2 questionnaire-only (`config/domains.yaml`) |
-| Sources registered | 38 (`config/sources.yaml`) |
-| Indicators registered | 64 (`config/indicators.yaml`) |
-| Indicators carrying provisional curve params | 11 — placeholders awaiting Phase 3 elicitation |
-| Ingest modules written | 12 |
-| **Indicators populated with real data** | **44 of 64** — see `output/coverage.md` for the other 20 |
+| Sources registered | 45 (`config/sources.yaml`) |
+| Indicators registered | 65 (`config/indicators.yaml`) |
+| Indicators carrying provisional curve params | 14 — placeholders awaiting elicitation, per `make validate` |
+| Ingest modules written | 14 |
+| **Indicators populated with real data** | **46 of 65** — see `output/coverage.md` for the other 19 |
 | Universe | **9,885** — 3,144 counties + 6,741 places (4,811 incorporated, 1,930 CDP) |
 
 Validate with `make validate`; the invariants are enforced mechanically and the negative
-cases are covered by `make test` (90 tests, none needing network).
+cases are covered by `make test`. Only the browser suite needs anything beyond the pipeline
+extra — it drives real Chromium through Playwright, and skips itself when either is absent.
 
 ---
 
@@ -502,6 +505,17 @@ cases are covered by `make test` (90 tests, none needing network).
    until this happens.
 2. **`make calibrate`** — if the elicited weights do not reproduce their own ratings of
    places they know, the weights are wrong and no ranking should be trusted yet.
-3. **Optional data top-ups**, none blocking: education 0/6 (SEDA needs one manual download,
+3. **Re-run the chain on real weights** once the profiles exist:
+   `make score && make diagnostics && make report`. Everything currently in `output/` was
+   produced from the placeholder weights and carries a banner saying so; all of it needs
+   regenerating before any of it means anything.
+4. **Optional data top-ups**, none blocking: education 0/6 (SEDA needs one manual download,
    its links being JS-gated), childcare 0/2, crime 2/5. `output/coverage.md` lists every gap.
-4. **Phase 4 — the scoring engine**, once two profiles exist.
+   The sensitive layer is also 1/3 populated — partisan lean and religious adherence have no
+   data — which only matters if it is ever opted into.
+
+**Phase 4 is built.** Scoring, two-stage ranking, rank bands, the report and all four
+anti-bias diagnostics run end to end. `make audit` reports 10 of 10. The demonstration
+report is published at
+`https://claude.ai/code/artifact/cb7c443a-4bc9-4405-89b4-d8c0849cb4bf` — republish the same
+file path to update it in place rather than creating a second copy.
