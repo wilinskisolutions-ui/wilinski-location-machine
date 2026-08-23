@@ -228,7 +228,16 @@ sections:
           - "Religious community"
           - "Diversity and share of people born abroad"
           - "None of these"
-        maps_to: {kind: qualitative_note, target: sensitive_opt_in}
+        # Each option names the indicator it switches on. The mapping lives here rather
+        # than in code because the alternative — matching on the option label — meant
+        # rewording a question silently disconnected it, and a silently disconnected
+        # opt-in is indistinguishable from an opt-in that was never given.
+        option_indicators:
+          "Political climate": sens_partisan_lean
+          "Religious community": sens_religious_adherence
+          "Diversity and share of people born abroad": sens_foreign_born_share
+          "None of these": null
+        maps_to: {kind: sensitive_opt_in, target: sensitive}
 
   # ------------------------------------------------------------------- 7. meta
   - id: meta

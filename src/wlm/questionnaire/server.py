@@ -349,8 +349,16 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"domains": read_domains()})
 
         if route == "/api/answer":
-            if body.get("value") is not None:
-                session.record(body["id"], body["value"])
+            # A blank is not an answer. The browser sends "" for an untouched text or
+            # number box and [] for a multi-select nobody ticked, and storing those made a
+            # skipped question indistinguishable from an answered one — Principle 6 applied
+            # to the questionnaire itself. Clearing a box on the way back through also has
+            # to erase what was there, or the old value silently outlives the edit.
+            value = body.get("value")
+            if value is None or value == "" or value == [] or value == {}:
+                session.answers.pop(body["id"], None)
+            else:
+                session.record(body["id"], value)
             session.position += 1
             session.save()
         elif route == "/api/back":

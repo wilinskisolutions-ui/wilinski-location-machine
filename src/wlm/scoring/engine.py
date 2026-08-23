@@ -106,6 +106,24 @@ def score(
         report.warnings.append("no indicator produced a desirability value")
         return pl.DataFrame(), report
 
+    # Principle 10, enforced at the one place every ranking passes through. A sensitive
+    # indicator is dropped outright unless the profile opted into it by name: the
+    # within-domain weight floor on line ~126 means a zero weight would still leave it
+    # counting at 0.05, so silence has to mean absence rather than a small number.
+    opted_in = set(profile.get("sensitive_indicators") or [])
+    excluded = sorted(
+        i for i, e in registry.items() if e.get("sensitive") and i not in opted_in
+    )
+    if excluded:
+        desir = desir.filter(~pl.col("indicator_id").is_in(excluded))
+        report.warnings.append(
+            f"{len(excluded)} sensitive indicator(s) not opted into and excluded: "
+            + ", ".join(excluded)
+        )
+        if desir.is_empty():
+            report.warnings.append("nothing left to score once sensitive data was excluded")
+            return pl.DataFrame(), report
+
     # Domains carrying weight but no data cannot influence anything. Say so.
     present_domains = set(desir["domain"].unique())
     for domain, w in weights.items():
@@ -146,6 +164,16 @@ def score(
             }
         )
 
+    if not rows:
+        # Polars raises ColumnNotFoundError on an empty frame, which tells nobody anything.
+        # Reaching here means every candidate lost every weighted domain — usually because
+        # the weight sits on domains with no data.
+        report.warnings.append(
+            "no candidate could be scored: none has data in any weighted domain "
+            f"({', '.join(sorted(weights))})"
+        )
+        return pl.DataFrame(), report
+
     result = pl.DataFrame(rows).sort("score", descending=True)
 
     thin = result.filter(pl.col("weight_covered") < MIN_WEIGHT_COVERED)
@@ -175,6 +203,12 @@ def apply_knockouts(
         try:
             threshold = float(rule.get("value"))
         except (TypeError, ValueError):
+            # A deal-breaker that cannot be read must not disappear quietly: the household
+            # would believe a filter was applied that never ran.
+            report.warnings.append(
+                f"knockout on '{indicator}' skipped — value {rule.get('value')!r} "
+                f"(from {rule.get('from', 'unknown question')}) is not a number"
+            )
             continue
 
         relevant = features.filter(

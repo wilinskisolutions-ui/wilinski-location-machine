@@ -254,3 +254,100 @@ class TestWeightEditor(unittest.TestCase):
         locked = {"safety": 25.0}
         blended.update(locked)
         self.assertEqual(blended["safety"], 25.0)
+
+
+class TestSensitiveOptIn(unittest.TestCase):
+    """Principle 10, in both directions.
+
+    The first version stored the option labels and nothing read them. Opting in changed
+    nothing, while allocating budget points to the sensitive domain gave it weight with no
+    opt-in at all — and `make audit` still reported Principle 10 as passing, because it
+    only inspected the default weight in config/domains.yaml.
+    """
+
+    BUDGET = {
+        "cost_housing": 15, "climate_environment": 15, "urban_form": 10,
+        "career_economy": 10, "education": 5, "family_childcare": 5,
+        "health_care": 10, "safety": 10, "recreation_lifestyle": 10,
+        "community_culture": 5, "sensitive": 5,
+    }
+
+    @classmethod
+    def setUpClass(cls):
+        cls.questions = generate.build()
+        cls.registry = {
+            i["id"]: i
+            for i in yaml.safe_load((CONFIG / "indicators.yaml").read_text())["indicators"]
+        }
+
+    def _profile(self, opt_in=None, sensitive_points=5):
+        from wlm.profile import build_profile
+
+        session = Session(person="emil", sessions_dir=Path(tempfile.mkdtemp()))
+        session.answers["budget_allocation"] = {**self.BUDGET, "sensitive": sensitive_points}
+        if opt_in is not None:
+            session.answers["q_sensitive_optin"] = opt_in
+        return build_profile(session, self.questions)
+
+    def test_budget_points_alone_cannot_switch_the_sensitive_domain_on(self):
+        """The bug: five points allocated, never opted in, and it reached the ranking."""
+        profile = self._profile(opt_in=None)
+        self.assertEqual(profile["sensitive_indicators"], [])
+        self.assertEqual(profile["domain_weights"].get("sensitive"), 0.0)
+
+    def test_dropping_the_weight_is_reported_not_silent(self):
+        profile = self._profile(opt_in=None)
+        notes = " ".join(profile["quality"]["weighting_notes"])
+        self.assertIn("sensitive", notes)
+        self.assertIn("5", notes, "the forfeited points should be named")
+
+    def test_opting_in_actually_reaches_the_profile(self):
+        """The other direction: opting in used to change nothing at all."""
+        profile = self._profile(opt_in=["Political climate"])
+        self.assertEqual(profile["sensitive_indicators"], ["sens_partisan_lean"])
+        self.assertGreater(profile["domain_weights"]["sensitive"], 0)
+
+    def test_opting_into_one_does_not_switch_on_the_others(self):
+        profile = self._profile(opt_in=["Political climate"])
+        for other in ("sens_religious_adherence", "sens_foreign_born_share"):
+            self.assertNotIn(other, profile["sensitive_indicators"])
+
+    def test_none_of_these_is_treated_as_opting_out(self):
+        profile = self._profile(opt_in=["None of these"])
+        self.assertEqual(profile["sensitive_indicators"], [])
+        self.assertEqual(profile["domain_weights"].get("sensitive"), 0.0)
+
+    def test_every_option_names_the_indicator_it_switches_on(self):
+        """Rewording an option must not silently disconnect it from its indicator."""
+        question = next(
+            q for q in self.questions
+            if q.get("maps_to", {}).get("kind") == "sensitive_opt_in"
+        )
+        mapping = question["option_indicators"]
+        for option in question["options"]:
+            self.assertIn(option, mapping, f"option {option!r} maps to no indicator")
+            target = mapping[option]
+            if target is not None:
+                self.assertIn(target, self.registry)
+                self.assertTrue(self.registry[target].get("sensitive"), target)
+
+    def test_an_unmapped_option_raises_rather_than_being_dropped(self):
+        from wlm.profile import OptInError, resolve_sensitive_opt_in
+
+        with self.assertRaises(OptInError):
+            resolve_sensitive_opt_in(self.questions, {"q_sensitive_optin": ["Something else"]})
+
+    def test_the_engine_excludes_sensitive_indicators_nobody_opted_into(self):
+        """The weight floor means a zero weight still counts; only absence is opting out."""
+        import polars as pl
+
+        from wlm.paths import PROCESSED
+        from wlm.scoring.engine import score
+
+        features = pl.read_parquet(PROCESSED / "features.parquet").filter(
+            pl.col("geo_level") == "county"
+        )
+        _, report = score(features, self.registry, {"domain_weights": {"sensitive": 100.0}})
+        excluded = " ".join(report.warnings)
+        for indicator in ("sens_partisan_lean", "sens_foreign_born_share"):
+            self.assertIn(indicator, excluded)

@@ -67,6 +67,48 @@ def _registry() -> dict[str, dict]:
     return {i["id"]: i for i in yaml.safe_load((CONFIG / "indicators.yaml").read_text())["indicators"]}
 
 
+class OptInError(ValueError):
+    """A sensitive opt-in could not be resolved to the indicators it switches on."""
+
+
+def resolve_sensitive_opt_in(questions: list[dict], answers: dict) -> tuple[list[str], list[str]]:
+    """Which sensitive indicators the household actually turned on.
+
+    Returns `(labels, indicator_ids)`. The question declares the mapping, so an option can
+    never drift away from the indicator it controls without this raising.
+
+    This exists because the first version stored the option labels and nothing read them:
+    opting in changed nothing, while allocating budget points to the sensitive domain gave
+    it weight with no opt-in at all. Principle 10 was broken in both directions and the
+    audit still passed, because the audit only inspected the config default.
+    """
+    question = next(
+        (q for q in questions if q.get("maps_to", {}).get("kind") == "sensitive_opt_in"),
+        None,
+    )
+    if question is None:
+        return [], []
+
+    chosen = answers.get(question["id"]) or []
+    if not isinstance(chosen, list):
+        return [], []
+
+    mapping = question.get("option_indicators") or {}
+    labels, indicators = [], []
+    for label in chosen:
+        if label not in mapping:
+            raise OptInError(
+                f"option {label!r} on {question['id']} names no indicator; "
+                "add it to option_indicators in questionnaire/bank.yaml"
+            )
+        indicator = mapping[label]
+        if indicator is None:  # an explicit "none of these"
+            continue
+        labels.append(label)
+        indicators.append(indicator)
+    return labels, indicators
+
+
 def _spreads() -> dict[str, tuple[float, float]]:
     """National mean and standard deviation per indicator, for scaling band offsets."""
     f = pl.read_parquet(PROCESSED / "features.parquet").filter(pl.col("value").is_not_null())
@@ -166,8 +208,30 @@ def build_profile(session, questions: list[dict]) -> dict:
                               "value": value, "from": q["id"]})
 
     # --- sensitive: opt-in only (Principle 10) ---
-    opt_in = answers.get("q_sensitive_optin") or []
-    sensitive = [o for o in opt_in if o != "None of these"] if isinstance(opt_in, list) else []
+    #
+    # Enforced here, not merely recorded. The sensitive domain sits in the budget question
+    # like any other, so points can be allocated to it without ever opting in; without this
+    # gate those points reach the ranking. Nothing downstream needs to remember the rule.
+    sensitive, sensitive_indicators = resolve_sensitive_opt_in(questions, answers)
+    if not sensitive_indicators and weights.get("sensitive"):
+        forfeited = weights["sensitive"]
+        weights["sensitive"] = 0.0
+        weights = normalize_budget(weights)
+        weight_notes.append(
+            f"sensitive weight ({forfeited:g} points) dropped to 0 and redistributed: "
+            "nothing was opted into. Principle 10 — these count only when asked for."
+        )
+    elif sensitive_indicators:
+        # Opted in, so the domain weight stands — but only the chosen indicators carry it.
+        # Turning on political lean must not also turn on religion and ancestry.
+        off = [
+            i for i, e in registry.items()
+            if e.get("sensitive") and i not in sensitive_indicators
+        ]
+        weight_notes.append(
+            "sensitive opted in: " + ", ".join(sorted(sensitive_indicators))
+            + (f"; left off: {', '.join(sorted(off))}" if off else "")
+        )
 
     notes = {
         q["maps_to"]["target"]: answers[q["id"]]
@@ -198,6 +262,9 @@ def build_profile(session, questions: list[dict]) -> dict:
         "curve_overrides": overrides,
         "knockouts": knockouts,
         "sensitive_opt_in": sensitive,
+        # The resolved ids are what the engine reads. Keeping the labels too means the
+        # profile still says, in the household's own words, what was agreed to.
+        "sensitive_indicators": sensitive_indicators,
         "notes": notes,
     }
 

@@ -110,13 +110,70 @@ def check() -> list[tuple[str, str, str]]:
     ))
 
     # 10 — sensitive at weight zero
-    sensitive = [i for i in reg if i.get("sensitive")]
+    #
+    # This check used to read the config default alone and report PASS. It was wrong: the
+    # sensitive domain sits in the budget question like any other, so points allocated to
+    # it reached the ranking with no opt-in, while opting in did nothing because nothing
+    # read the answer. A principle is only checked if the check can fail on real behaviour,
+    # so this now exercises the gate itself.
+    sensitive = [i["id"] for i in reg if i.get("sensitive")]
+    by_id = {i["id"]: i for i in reg}
     dom = yaml.safe_load((CONFIG / "domains.yaml").read_text())["domains"]
     sens_weight = next((d["default_weight"] for d in dom if d["id"] == "sensitive"), None)
+
+    findings, gate_ok = [], True
+    if sens_weight != 0:
+        gate_ok = False
+        findings.append(f"config default weight is {sens_weight}, not 0")
+
+    try:
+        from wlm.profile import resolve_sensitive_opt_in
+        from wlm.questionnaire import generate
+
+        questions = generate.build()
+        _, none_chosen = resolve_sensitive_opt_in(questions, {})
+        if none_chosen:
+            gate_ok = False
+            findings.append("an empty answer still resolved to indicators")
+
+        question = next(
+            (q for q in questions if q.get("maps_to", {}).get("kind") == "sensitive_opt_in"),
+            None,
+        )
+        if question is None:
+            gate_ok = False
+            findings.append("no question opts into the sensitive layer")
+        else:
+            unmapped = [o for o in question["options"]
+                        if o not in (question.get("option_indicators") or {})]
+            if unmapped:
+                gate_ok = False
+                findings.append(f"options naming no indicator: {', '.join(unmapped)}")
+
+        # The engine must drop what nobody asked for, not merely down-weight it.
+        from wlm.scoring.engine import score
+
+        features = pl.read_parquet(PROCESSED / "features.parquet").filter(
+            pl.col("geo_level") == "county"
+        )
+        _, probe = score(features, by_id, {"domain_weights": {"sensitive": 100.0}})
+        dropped = " ".join(probe.warnings)
+        missed = [i for i in sensitive if i not in dropped]
+        if missed:
+            gate_ok = False
+            findings.append(f"engine did not exclude {', '.join(missed)} without an opt-in")
+    except Exception as exc:  # a check that cannot run has not passed
+        gate_ok = False
+        findings.append(f"gate could not be verified: {exc}")
+
     out.append((
-        "10. Sensitive dimensions default to weight zero", "PASS" if sens_weight == 0 else "FAIL",
+        "10. Sensitive dimensions default to weight zero",
+        "PASS" if gate_ok else "FAIL",
         f"{len(sensitive)} sensitive indicators, domain default weight {sens_weight}. "
-        "Excluded from trade-off attributes; profile records opt-in explicitly.",
+        + ("Excluded from trade-off attributes; the profile gate zeroes the domain weight "
+           "unless an option is opted into by name, and the engine drops any sensitive "
+           "indicator absent from that list."
+           if gate_ok else "; ".join(findings)),
     ))
 
     return out
