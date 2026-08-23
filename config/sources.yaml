@@ -25,7 +25,7 @@ sources:
   - {id: bea_income,         name: BEA per-capita personal income,  url: "https://apps.bea.gov/regional/downloadzip.htm",         geo_levels: [county],         vintage: "2023",            license: PD}
   - {id: mit_livingwage,     name: MIT Living Wage Calculator,      url: "https://livingwage.mit.edu/",                           geo_levels: [county],         vintage: "2025",            license: "Free w/ attribution"}
   - {id: hud_fmr,            name: HUD Fair Market Rents,           url: "https://www.huduser.gov/portal/datasets/fmr.html",      geo_levels: [county],         vintage: "FY2026",          license: PD}
-  - {id: zillow_research,    name: Zillow ZHVI / ZORI,              url: "https://www.zillow.com/research/data/",                 geo_levels: [metro, place],   vintage: "2026-monthly",    license: "Free, non-commercial, attribution"}
+  - {id: zillow_research,    name: Zillow ZHVI / ZORI,              url: "https://www.zillow.com/research/data/",                 geo_levels: [metro, county, place],   vintage: "2026-monthly",    license: "Free, non-commercial, attribution"}
   - {id: fhfa_hpi,           name: FHFA House Price Index,          url: "https://www.fhfa.gov/data/hpi",                         geo_levels: [metro, county],  vintage: "2026-quarterly",  license: PD}
 
   # --- jobs / economy ---
@@ -46,7 +46,7 @@ sources:
 
   # --- safety ---
   - {id: fbi_cde,            name: FBI Crime Data Explorer,         url: "https://cde.ucr.cjis.gov",                              geo_levels: [county],         vintage: "2024",            license: PD}
-  - {id: cdc_wonder,        name: CDC WONDER mortality,            url: "https://wonder.cdc.gov/",                                geo_levels: [county],         vintage: "2023",            license: PD}
+  - {id: cdc_wonder,        name: CDC county injury mortality,     url: "https://data.cdc.gov/resource/psx4-wq38.json",                                geo_levels: [county],         vintage: "2023",            license: PD}
   - {id: nhtsa_fars,        name: NHTSA FARS crash fatalities,     url: "https://www.nhtsa.gov/file-downloads",                   geo_levels: [county],         vintage: "2023",            license: PD}
 
   # --- education / family ---

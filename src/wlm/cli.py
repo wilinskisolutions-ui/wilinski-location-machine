@@ -45,6 +45,20 @@ DOWNLOADS: dict[str, list[str]] = {
         # self-describing ("1600000US4232800" = place), so the 92MB geography lookup is
         # unnecessary.
         "https://www2.census.gov/programs-surveys/acs/summary_file/2023/table-based-SF/data/5YRData/acsdt5y2023-b01003.dat",
+        # Tier 2 tables. One file per ACS table, same self-describing GEO_ID format.
+        *[
+            f"https://www2.census.gov/programs-surveys/acs/summary_file/2023/table-based-SF/data/5YRData/acsdt5y2023-{tbl}.dat"
+            for tbl in (
+                "b25103",  # median real estate taxes paid
+                "b25077",  # median home value
+                "b19013",  # median household income
+                "b01002",  # median age
+                "b05002",  # place of birth (foreign-born share)
+                "b07003",  # geographic mobility (residential stability)
+                "b08013",  # aggregate travel time to work
+                "b08303",  # workers by travel time (denominator for mean commute)
+            )
+        ],
     ],
     "census_place_codes": [
         "https://www2.census.gov/geo/docs/reference/codes2020/national_place2020.txt",
@@ -84,6 +98,10 @@ DOWNLOADS: dict[str, list[str]] = {
         "https://www.countyhealthrankings.org/sites/default/files/media/document/analytic_data2025.csv"
     ],
     "zillow_research": [
+        # County files, not metro: they join straight to the universe with no CBSA
+        # crosswalk. The metro files stay downloaded for later metro-level work.
+        "https://files.zillowstatic.com/research/public_csvs/zhvi/County_zhvi_uc_sfrcondo_tier_0.33_0.67_sm_sa_month.csv",
+        "https://files.zillowstatic.com/research/public_csvs/zori/County_zori_uc_sfrcondomfr_sm_month.csv",
         "https://files.zillowstatic.com/research/public_csvs/zhvi/Metro_zhvi_uc_sfrcondo_tier_0.33_0.67_sm_sa_month.csv",
         "https://files.zillowstatic.com/research/public_csvs/zori/Metro_zori_uc_sfrcondomfr_sm_month.csv",
     ],
@@ -197,8 +215,11 @@ def stage_features(args) -> int:
 
     from wlm import baseline
     from wlm.features.build import build as build_features
-    from wlm.geo import read_population_centroids
-    from wlm.ingest import bts_intl, census_cbp, fema_nri, noaa_normals
+    from wlm.geo import read_cbsa_delineation, read_population_centroids
+    from wlm.ingest import (
+        bea_rpp, bls_qcew, bts_intl, cdc_mortality, census_acs, census_cbp,
+        chr_rwjf, epa_aqs, fars, fema_nri, noaa_normals, zillow,
+    )
     from wlm.paths import PROCESSED, RAW, UNIVERSE
 
     if not UNIVERSE.exists():
@@ -235,6 +256,47 @@ def stage_features(args) -> int:
     hazard = fema_nri.ingest(RAW / "fema_nri" / "nri_counties.json")
     frames.append(hazard)
     print(f"  hazard     {hazard.height:>7,} rows")
+
+    # --- Tier 2 ---
+    acs = census_acs.build_indicators(RAW / "census_acs5", universe)
+    frames.append(acs)
+    print(f"  acs        {acs.height:>7,} rows  ({acs['indicator_id'].n_unique()} indicators)")
+
+    health, hstats = chr_rwjf.ingest(RAW / "chr_rwjf" / "analytic_data2025.csv")
+    frames.append(health)
+    print(f"  health/chr {health.height:>7,} rows  ({hstats['measures_found']} measures)")
+
+    for filename, indicator in (
+        ("County_zhvi_uc_sfrcondo_tier_0.33_0.67_sm_sa_month.csv", "cost_home_value_median"),
+        ("County_zori_uc_sfrcondomfr_sm_month.csv", "cost_rent_median_zori"),
+    ):
+        z = zillow.ingest(RAW / "zillow_research" / filename, indicator, vintage="2026")
+        frames.append(z)
+        print(f"  zillow     {z.height:>7,} rows  ({indicator})")
+
+    air, aqstats = epa_aqs.ingest(RAW / "epa_aqs" / "annual_conc_by_monitor_2024.zip")
+    frames.append(air)
+    print(f"  air/pm2.5  {air.height:>7,} rows  "
+          f"({aqstats['counties_with_monitors']:,} counties have a monitor)")
+
+    roads, rstats = fars.ingest(RAW / "nhtsa_fars" / "FARS2023NationalCSV.zip", population)
+    frames.append(roads)
+    print(f"  road deaths{roads.height:>7,} rows  "
+          f"({rstats['counties_with_deaths']:,} counties with a fatal crash)")
+
+    jobs, jstats = bls_qcew.ingest(RAW / "bls_qcew" / "2024_annual_singlefile.zip", vintage="2024")
+    frames.append(jobs)
+    print(f"  jobs/qcew  {jobs.height:>7,} rows  ({jstats['counties_with_sectors']:,} counties)")
+
+    injury, istats = cdc_mortality.ingest(RAW / "cdc_wonder" / "county_injury_2023.json")
+    frames.append(injury)
+    print(f"  injury/cdc {injury.height:>7,} rows  (firearm + overdose deaths)")
+
+    cbsa = read_cbsa_delineation(RAW / "census_cbsa" / "list1_2023.xlsx")
+    prices, pstats = bea_rpp.ingest(RAW / "bea_rpp" / "MARPP.zip", cbsa)
+    frames.append(prices)
+    print(f"  prices/rpp {prices.height:>7,} rows  "
+          f"({pstats['counties_matched']:,} of {pstats['counties_in_metros']:,} metro counties)")
 
     features, coverage, report = build_features(universe=universe, long_frames=frames, write=False)
     features = baseline.compare(features)

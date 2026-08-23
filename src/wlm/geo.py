@@ -340,3 +340,41 @@ def read_population_centroids(path: Path) -> dict[str, tuple[float, float]]:
         except (KeyError, ValueError, GeoError):
             continue
     return out
+
+
+def read_cbsa_delineation(path: Path) -> dict[str, tuple[str, str]]:
+    """County GEOID -> (CBSA code, CBSA title), from the Census delineation workbook.
+
+    Only distributed as .xlsx — there is no CSV equivalent (`list1_2023.csv` 404s) — so this
+    needs openpyxl. The sheet carries several title rows before the header, which is why the
+    header row is located by content rather than assumed to be row 1.
+    """
+    from openpyxl import load_workbook
+
+    wb = load_workbook(Path(path), read_only=True, data_only=True)
+    sheet = wb[wb.sheetnames[0]]
+
+    header: list[str] | None = None
+    out: dict[str, tuple[str, str]] = {}
+    col: dict[str, int] = {}
+
+    for row in sheet.iter_rows(values_only=True):
+        values = ["" if v is None else str(v).strip() for v in row]
+        if header is None:
+            if any(v.upper().startswith("CBSA CODE") for v in values):
+                header = [v.upper() for v in values]
+                for name in ("CBSA CODE", "CBSA TITLE", "FIPS STATE CODE", "FIPS COUNTY CODE"):
+                    if name in header:
+                        col[name] = header.index(name)
+            continue
+        if len(col) < 4:
+            continue
+        try:
+            geoid = county_geoid(values[col["FIPS STATE CODE"]], values[col["FIPS COUNTY CODE"]])
+        except (GeoError, IndexError):
+            continue
+        if is_in_scope(geoid):
+            out[geoid] = (values[col["CBSA CODE"]], values[col["CBSA TITLE"]])
+
+    wb.close()
+    return out

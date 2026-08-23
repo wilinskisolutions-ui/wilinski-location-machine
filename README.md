@@ -45,7 +45,10 @@ that contradicts it. Then **[`CONTEXT.md`](CONTEXT.md)** for current state.
 make validate   # check config registries against the GOAL.md principles
 make test       # run the test suite (90 tests, no network needed)
 make demo       # run the whole chain on synthetic fixtures
-make data       # download the real sources (needs the egress allowlist)
+make data       # download every source (~250MB) into data/raw with checksums
+make universe   # build the candidate universe
+make features   # ingest everything and compute percentiles
+make coverage   # report what has data and what does not, with reasons
 ```
 
 `validate` needs PyYAML alone. The pipeline stages need `pip install -e ".[pipeline]"`.
@@ -56,20 +59,21 @@ synthetic input.
 
 ## Status
 
-**Phase 1 — Universe: built.** The universe builder, provenance layer, three ingest
-modules, and the features stage all run end to end. They run on *synthetic fixtures* only,
-because the data hosts are still blocked — and the synthetic guardrail makes it impossible
-for those fixtures to reach a real result.
+**Phase 2 — Ingest: complete.** A real universe of **9,885 candidates** (3,144 counties,
+6,741 places) with **44 of 64 indicators populated** from live federal data. Every remaining
+gap has a named reason in `output/coverage.md`.
 
 | Phase | Deliverable | Status |
 |---|---|---|
 | 0 — Charter | Principles, methodology, registries, scaffolding | done |
-| 1 — Universe | Fixed candidate set, pipeline proven on 3-4 sources | **built, awaiting real data** |
+| 1 — Universe | Fixed candidate set, pipeline proven on 3-4 sources | done |
+| 2 — Ingest | 44 of 64 indicators on real data, coverage report | done |
 | 2 — Ingest | 40-60 indicators, coverage report | |
 | 3 — Questionnaire | Question bank, elicited weights, calibration set | |
 | 4 — Engine | Scoring, sensitivity, anti-bias diagnostics, report | |
 | 5 — Shortlist | Top ~25 deep dive, blind evaluation | |
 | 6 — Field | Visit plan and final decision | |
 
-Phase 2 is blocked on the network allowlist in `docs/network-allowlist.md` — the pipeline
-is written and tested, it just has no real data to run on yet.
+Phase 3 is blocked on the household, not on data: the calibration set of 15-20 known
+places rated 1-10. Without it there is no way to check that fitted weights reproduce
+judgements they already hold.

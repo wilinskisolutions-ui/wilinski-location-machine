@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated_at": "2026-08-22T23:29:48+00:00",
+  "updated_at": "2026-08-23T02:52:53+00:00",
   "entries": [
     {
       "source_id": "bea_rpp",
@@ -26,11 +26,99 @@
     },
     {
       "source_id": "census_acs5",
+      "url": "https://www2.census.gov/programs-surveys/acs/summary_file/2023/table-based-SF/data/5YRData/acsdt5y2023-b01002.dat",
+      "path": "census_acs5/acsdt5y2023-b01002.dat",
+      "retrieved_at": "2026-08-23T02:52:31+00:00",
+      "sha256": "270cb55fea151fde28b30b8658d653f19eea52c953515df83d1459164542be79",
+      "bytes": 26654115,
+      "synthetic": false,
+      "vintage": null,
+      "note": null
+    },
+    {
+      "source_id": "census_acs5",
       "url": "https://www2.census.gov/programs-surveys/acs/summary_file/2023/table-based-SF/data/5YRData/acsdt5y2023-b01003.dat",
       "path": "census_acs5/acsdt5y2023-b01003.dat",
       "retrieved_at": "2026-08-22T23:19:02+00:00",
       "sha256": "24ae3f523b4c54332ce0a71ba534569685a8a729056f975915d860d1eb943565",
       "bytes": 18311997,
+      "synthetic": false,
+      "vintage": null,
+      "note": null
+    },
+    {
+      "source_id": "census_acs5",
+      "url": "https://www2.census.gov/programs-surveys/acs/summary_file/2023/table-based-SF/data/5YRData/acsdt5y2023-b05002.dat",
+      "path": "census_acs5/acsdt5y2023-b05002.dat",
+      "retrieved_at": "2026-08-23T02:52:32+00:00",
+      "sha256": "48bbc708638cc7d83d63bd003f6c0517d75888c16a47c8248e737ce5fcb02ceb",
+      "bytes": 57603352,
+      "synthetic": false,
+      "vintage": null,
+      "note": null
+    },
+    {
+      "source_id": "census_acs5",
+      "url": "https://www2.census.gov/programs-surveys/acs/summary_file/2023/table-based-SF/data/5YRData/acsdt5y2023-b07003.dat",
+      "path": "census_acs5/acsdt5y2023-b07003.dat",
+      "retrieved_at": "2026-08-23T02:52:33+00:00",
+      "sha256": "b7776dfebf27fafb37e3490b9bdd6fa91375f87533888e2085fb2c5997ae0156",
+      "bytes": 43108488,
+      "synthetic": false,
+      "vintage": null,
+      "note": null
+    },
+    {
+      "source_id": "census_acs5",
+      "url": "https://www2.census.gov/programs-surveys/acs/summary_file/2023/table-based-SF/data/5YRData/acsdt5y2023-b08013.dat",
+      "path": "census_acs5/acsdt5y2023-b08013.dat",
+      "retrieved_at": "2026-08-23T02:52:34+00:00",
+      "sha256": "048b722b3e89329098e920b836d61d267a5aac8dd6ad8d980d85f85acadad55e",
+      "bytes": 15201352,
+      "synthetic": false,
+      "vintage": null,
+      "note": null
+    },
+    {
+      "source_id": "census_acs5",
+      "url": "https://www2.census.gov/programs-surveys/acs/summary_file/2023/table-based-SF/data/5YRData/acsdt5y2023-b08303.dat",
+      "path": "census_acs5/acsdt5y2023-b08303.dat",
+      "retrieved_at": "2026-08-23T02:52:34+00:00",
+      "sha256": "8dc1b696d93c28a684784281211cf4e5011f01d9ca84694df2d7fb3b4ad84f51",
+      "bytes": 64151329,
+      "synthetic": false,
+      "vintage": null,
+      "note": null
+    },
+    {
+      "source_id": "census_acs5",
+      "url": "https://www2.census.gov/programs-surveys/acs/summary_file/2023/table-based-SF/data/5YRData/acsdt5y2023-b19013.dat",
+      "path": "census_acs5/acsdt5y2023-b19013.dat",
+      "retrieved_at": "2026-08-23T02:52:30+00:00",
+      "sha256": "c9007017b7bb29ba758c77612ec9a4a0b897a4ed931d527754629866f580a110",
+      "bytes": 17884943,
+      "synthetic": false,
+      "vintage": null,
+      "note": null
+    },
+    {
+      "source_id": "census_acs5",
+      "url": "https://www2.census.gov/programs-surveys/acs/summary_file/2023/table-based-SF/data/5YRData/acsdt5y2023-b25077.dat",
+      "path": "census_acs5/acsdt5y2023-b25077.dat",
+      "retrieved_at": "2026-08-23T02:52:30+00:00",
+      "sha256": "302d57367033bd13b824c8d658cd3ef98819adb366d9ddd4c3861a9707eb734c",
+      "bytes": 18467363,
+      "synthetic": false,
+      "vintage": null,
+      "note": null
+    },
+    {
+      "source_id": "census_acs5",
+      "url": "https://www2.census.gov/programs-surveys/acs/summary_file/2023/table-based-SF/data/5YRData/acsdt5y2023-b25103.dat",
+      "path": "census_acs5/acsdt5y2023-b25103.dat",
+      "retrieved_at": "2026-08-23T02:52:29+00:00",
+      "sha256": "f025bd84ded9543a473f922d9832a3de658938188a3c9eaab72a3bdd36104343",
+      "bytes": 15249093,
       "synthetic": false,
       "vintage": null,
       "note": null
@@ -185,6 +273,28 @@
       "retrieved_at": "2026-08-22T23:29:47+00:00",
       "sha256": "9387cdb38df5bd664da823f8ccb69fdd9b33a1888f5b7cca09c34a3cd9ff59f9",
       "bytes": 1127225,
+      "synthetic": false,
+      "vintage": null,
+      "note": null
+    },
+    {
+      "source_id": "zillow_research",
+      "url": "https://files.zillowstatic.com/research/public_csvs/zhvi/County_zhvi_uc_sfrcondo_tier_0.33_0.67_sm_sa_month.csv",
+      "path": "zillow_research/County_zhvi_uc_sfrcondo_tier_0.33_0.67_sm_sa_month.csv",
+      "retrieved_at": "2026-08-23T02:52:48+00:00",
+      "sha256": "8ea53a5461073e62b1d7f0eb216290954246f56ba344a227956665ab19c2b271",
+      "bytes": 13520396,
+      "synthetic": false,
+      "vintage": null,
+      "note": null
+    },
+    {
+      "source_id": "zillow_research",
+      "url": "https://files.zillowstatic.com/research/public_csvs/zori/County_zori_uc_sfrcondomfr_sm_month.csv",
+      "path": "zillow_research/County_zori_uc_sfrcondomfr_sm_month.csv",
+      "retrieved_at": "2026-08-23T02:52:51+00:00",
+      "sha256": "302a5f5b5f594ea978079cbc4111bf4c33baa8677ddf368792f2e18f143f46d4",
+      "bytes": 1923888,
       "synthetic": false,
       "vintage": null,
       "note": null

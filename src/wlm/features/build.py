@@ -146,6 +146,19 @@ def build(
     report.rows_joined = joined.height
     report.rows_dropped_no_geo = long.height - joined.height
     if report.rows_dropped_no_geo:
+        # Break the drop down by indicator so a genuine join bug is distinguishable from a
+        # source that simply covers geographies below the population floor. A generic total
+        # hides the difference, and the two need opposite responses.
+        dropped = long.join(
+            universe.select(["geo_level", "geo_id"]), on=["geo_level", "geo_id"], how="anti"
+        )
+        worst = (
+            dropped.group_by("indicator_id").len().sort("len", descending=True).head(3)
+        )
+        report.warnings.append(
+            "dropped rows by indicator: "
+            + ", ".join(f"{r['indicator_id']} {r['len']:,}" for r in worst.iter_rows(named=True))
+        )
         report.warnings.append(
             f"{report.rows_dropped_no_geo} row(s) referenced a geography outside the universe. "
             "Usually benign — a source covers places below the population floor. Worth "

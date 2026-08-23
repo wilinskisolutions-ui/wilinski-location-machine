@@ -76,7 +76,7 @@ Non-PD sources are flagged and carry attribution or non-commercial terms — not
 | Source | URL | Geo | Vintage | License |
 |---|---|---|---|---|
 | FBI Crime Data Explorer | `cde.ucr.cjis.gov` | agency → county | annual | PD |
-| CDC WONDER mortality | `wonder.cdc.gov` | county | 2023 | PD |
+| CDC county injury mortality | `data.cdc.gov/resource/psx4-wq38.json` | county | 2023 | PD |
 | NHTSA FARS crash fatalities | `nhtsa.gov/file-downloads` | county | 2023 | PD |
 
 > **Why this domain is broader than crime.** FBI reporting is voluntary and the NIBRS
@@ -89,9 +89,21 @@ Non-PD sources are flagged and carry attribution or non-commercial terms — not
 > difference from crime — a factor almost no relocation research counts. Overdose and
 > firearm mortality are included on the same reasoning.
 >
-> **Caveats, both flagged rather than imputed (Principle 6):** FBI agency gaps, and CDC
-> WONDER's suppression of county-year cells with fewer than 10 deaths — which bites hardest
-> in small counties, so it must not be read as "safe." See `CONTEXT.md` Open Question #7.
+> **Sourced from `data.cdc.gov`, not WONDER itself**, which is form-gated and cannot be
+> queried programmatically. Same vital-statistics data.
+>
+> **Caveats, checked rather than assumed.** CDC *bins* small counts (`1-9`, `10-50`) but
+> publishes the rate regardless, and every zero-rate row carries a genuine count of zero —
+> so rates are usable throughout. The residual caution is statistical: a rate built on a
+> binned count is volatile, and a run of quiet years in a small county will read as safety.
+>
+> Road-death rates carry a **minimum population of 1,000**. Counties have no population
+> floor, and Loving County, Texas (about 64 residents) produced 6,250 deaths per 100,000 —
+> two orders of magnitude above anywhere else, entirely from the denominator, and mostly
+> pass-through highway traffic rather than residents. Below the threshold the rate is left
+> missing rather than published as a number that would dominate any ranking it entered.
+>
+> FBI agency reporting gaps remain flagged, never imputed. See `CONTEXT.md` Open Question #8.
 
 ## Education
 

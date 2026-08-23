@@ -5,8 +5,8 @@
 > is the project's working memory: a session that reads it should be able to resume cold
 > without re-deriving anything or re-asking a settled question.
 
-**Current phase:** Phase 2 — Real data · **Status:** Tier 1 complete on real downloads;
-9,885-place universe built, 23 indicators populated
+**Current phase:** Phase 2 — Real data · **Status:** **complete.** 9,885-place universe,
+**44 of 64 indicators populated**; the other 20 have documented reasons (`output/coverage.md`)
 **Blocking Phase 3:** the questionnaire, plus the household's calibration ratings
 **Last updated:** 2026-08-22
 
@@ -217,6 +217,40 @@ no South Carolina, no Tennessee** — the Sunbelt corridor does not survive its 
 numbers. Equal implicit weights, 23 indicators, no elicited preferences: indicative only.
 Real scoring is Phase 4.
 
+### 2026-08-22 — Phase 2 complete: Tier 2 ingest, and four more corrections
+Populated indicators 23 → **44 of 64**. Every remaining gap has a named reason in
+`output/coverage.md` (new `make coverage` target), which is now the answer to "what is
+missing" instead of that living in anyone's head.
+
+New readers: `chr_rwjf` (one CSV covering health, providers, parks, social capital and
+unemployment), `census_acs` derived indicators (8, several cross-table ratios), `zillow`
+(county files), `epa_aqs`, `fars`, `bls_qcew`, `bea_rpp`, `cdc_mortality`.
+
+Four corrections the data forced:
+
+1. **Zillow publishes county files.** Using them instead of the metro files removed the
+   need for a CBSA crosswalk on housing entirely.
+2. **CHR's provider measure is the reciprocal of ours.** It publishes physicians per head;
+   the registry asks for people per physician, which is what `lower_better` means for that
+   indicator. Left alone the direction would have been exactly backwards.
+3. **Per-capita rates explode in tiny counties.** Places carry a 5,000 floor; counties do
+   not. Loving County, Texas (~64 residents) showed **6,250 road deaths per 100,000** — two
+   orders of magnitude above anywhere else, purely from the denominator, and mostly
+   pass-through highway traffic. Rates now require a population of at least 1,000; 36
+   counties fall below it and are left missing.
+4. **CDC suppression works differently than assumed.** Counts are *binned* (`1-9`,
+   `10-50`) but rates are published anyway, and zero-rate rows carry genuine zeros. Checked
+   rather than guessed, so the rates are used rather than needlessly discarded.
+
+**Known universe gap:** five places with population ≥5,000 (largest 53,043, four in
+Massachusetts) exist in ACS 2019–2023 but are absent from the 2024 Gazetteer — a vintage
+mismatch in geography, not a join bug. 0.07% of places; revisit if the Gazetteer vintage
+moves.
+
+**Air-quality coverage is thin by nature:** only 637 of 3,144 counties have a PM2.5
+monitor. Left missing rather than interpolated, so it lowers coverage instead of inventing
+clean air for unmonitored places.
+
 ---
 
 ## Data inventory
@@ -251,10 +285,10 @@ that will actually resolve them. A moved URL gets corrected there and in
 |---|---|
 | Domains defined | 13 — 11 scoring, 2 questionnaire-only (`config/domains.yaml`) |
 | Sources registered | 38 (`config/sources.yaml`) |
-| Indicators registered | 68 (`config/indicators.yaml`) |
+| Indicators registered | 64 (`config/indicators.yaml`) |
 | Indicators carrying provisional curve params | 11 — placeholders awaiting Phase 3 elicitation |
-| Indicators with an ingest module written | 23 |
-| **Indicators populated with real data** | **23** — climate 8, hazard 7, amenities 5, air 3 |
+| Ingest modules written | 12 |
+| **Indicators populated with real data** | **44 of 64** — see `output/coverage.md` for the other 20 |
 | Universe | **9,885** — 3,144 counties + 6,741 places (4,811 incorporated, 1,930 CDP) |
 
 Validate with `make validate`; the invariants are enforced mechanically and the negative
@@ -291,13 +325,10 @@ cases are covered by `make test` (90 tests, none needing network).
 
 ## Next actions
 
-1. **Finish Tier 2 ingest.** Files are downloaded and manifested; modules still needed for
-   `bls_qcew`, `bea_rpp`, `epa_aqs`, `chr_rwjf`, `zillow_research`, `nhtsa_fars`. Each is a
-   reader plus a column map against the existing `emit` contract.
-2. **Resolve the two unreachable sources.** SEDA's download links are JS-gated (needs one
-   manual download registered into the manifest); HUD FMR returns 202 with zero bytes —
-   Zillow ZORI covers rent meanwhile.
-3. **Get the household's calibration ratings** — 15–20 places they know, rated 1–10,
-   including Harrisburg. Without it no ranking is trustworthy, and it is the cheapest thing
-   left to collect.
-4. **Phase 3 — Questionnaire.** Weights by forced trade-off; both partners independently.
+1. **Get the household's calibration ratings** — 15–20 places they know, rated 1–10,
+   including Harrisburg. Without it no ranking is trustworthy, and it is now the cheapest
+   and highest-value thing left to collect. This blocks Phase 3 more than any data does.
+2. **Phase 3 — Questionnaire.** Weights by forced trade-off; both partners independently.
+3. **Optional data top-ups**, none blocking: education is 0/6 (SEDA needs one manual
+   download, its links being JS-gated), childcare 0/2, crime 2/5. `output/coverage.md`
+   lists every gap with its reason.

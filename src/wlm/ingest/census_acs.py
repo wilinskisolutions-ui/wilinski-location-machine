@@ -155,3 +155,87 @@ def parse_acs_bulk(path: Path, variable: str = "B01003_E001") -> dict[str, int]:
 
 def population_from_bulk(path: Path) -> dict[str, int]:
     return parse_acs_bulk(path, "B01003_E001")
+
+
+# ----------------------------------------------------------------- derived indicators
+
+# indicator -> (numerator table/variable, denominator or None, geo level)
+#
+# Several of these are ratios across two ACS tables. Expressing them here rather than in the
+# feature stage keeps the derivation next to its source, and means the registry's `unit`
+# ("ratio", "share") is what actually gets emitted.
+DERIVED: dict[str, tuple[str, str | None, str]] = {
+    # Tax as a share of home value, not dollars: a high-tax cheap house and a low-tax
+    # expensive one are not comparable in dollars.
+    "cost_property_tax_rate": ("b25103:B25103_E001", "b25077:B25077_E001", "county"),
+    # Affordability relative to local wages, which is the number that decides whether a
+    # place is livable on its own salaries.
+    "cost_income_to_home_ratio": ("b25077:B25077_E001", "b19013:B19013_E001", "place"),
+    "form_mean_commute": ("b08013:B08013_E001", "b08303:B08303_E001", "place"),
+    "sens_foreign_born_share": ("b05002:B05002_E013", "b05002:B05002_E001", "place"),
+    "comm_same_house_1yr": ("b07003:B07003_E004", "b07003:B07003_E001", "place"),
+    "comm_median_age": ("b01002:B01002_E001", None, "place"),
+    "form_population": ("b01003:B01003_E001", None, "place"),
+}
+
+GEO_WIDTH = {"county": 5, "place": 7}
+
+
+def _table_values(raw_dir: Path, spec: str) -> dict[str, float]:
+    table, variable = spec.split(":")
+    path = Path(raw_dir) / f"acsdt5y2023-{table}.dat"
+    return {k: float(v) for k, v in parse_acs_bulk(path, variable).items()}
+
+
+def build_indicators(
+    raw_dir: Path,
+    universe: "pl.DataFrame | None" = None,
+    *,
+    vintage: str = "2019-2023",
+    derived: dict | None = None,
+) -> "pl.DataFrame":
+    """Emit every ACS-derived indicator, including cross-table ratios."""
+    import polars as pl  # local import keeps the module importable without polars
+
+    derived = derived or DERIVED
+    cache: dict[str, dict[str, float]] = {}
+    records: list[dict] = []
+
+    for indicator, (num_spec, den_spec, level) in derived.items():
+        for spec in (num_spec, den_spec):
+            if spec and spec not in cache:
+                cache[spec] = _table_values(raw_dir, spec)
+
+        numerator = cache[num_spec]
+        denominator = cache[den_spec] if den_spec else None
+        width = GEO_WIDTH[level]
+
+        for geoid, value in numerator.items():
+            if len(geoid) != width:
+                continue
+            if denominator is not None:
+                base = denominator.get(geoid)
+                # A zero or absent denominator makes the ratio undefined, not zero.
+                value = (value / base) if (base and base > 0) else None
+            records.append(
+                {"geo_level": level, "geo_id": geoid, "indicator_id": indicator, "value": value}
+            )
+
+    # Density needs land area, which lives on the universe rather than in ACS.
+    if universe is not None:
+        population = cache.get("b01003:B01003_E001") or _table_values(
+            raw_dir, "b01003:B01003_E001"
+        )
+        places = universe.filter(pl.col("geo_level") == "place")
+        for geo_id, land in zip(places["geo_id"], places["land_sqmi"]):
+            pop = population.get(geo_id)
+            records.append(
+                {
+                    "geo_level": "place",
+                    "geo_id": geo_id,
+                    "indicator_id": "form_population_density",
+                    "value": (pop / land) if (pop is not None and land and land > 0) else None,
+                }
+            )
+
+    return emit(records, source_file="acsdt5y2023-*.dat", vintage=vintage)

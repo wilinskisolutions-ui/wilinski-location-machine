@@ -7,6 +7,7 @@ help:
 	@echo "validate     Check config registries against the GOAL.md principles"
 	@echo "test         Run the test suite"
 	@echo "demo         Run the built stages on synthetic fixtures (no network needed)"
+	@echo "coverage     Report what has data and what does not, with reasons"
 	@echo "data         Download + checksum all sources (needs network - see docs/network-allowlist.md)"
 	@echo "universe     Build the fixed candidate universe          [Phase 1]"
 	@echo "features     Join, transform, percentile-rank            [Phase 2]"
@@ -19,6 +20,9 @@ validate:
 
 test:
 	@$(PYTEST) -m unittest discover -s tests
+
+coverage:
+	@$(PY) -m wlm.diagnostics.coverage
 
 data universe features score diagnostics report demo:
 	@$(PY) -m wlm.cli $@

@@ -19,9 +19,22 @@ indicators:
     domain: cost_housing
     label: Median home value (Zillow ZHVI)
     source: zillow_research
-    geo_level: place
+    geo_level: county
     curve: lower_better
     unit: USD
+    notes: Zillow's county file, which joins directly without a metro crosswalk.
+
+  - id: cost_rent_median_zori
+    domain: cost_housing
+    label: Median asking rent (Zillow ZORI)
+    source: zillow_research
+    geo_level: county
+    curve: lower_better
+    unit: USD/month
+    notes: >
+      Replaces the HUD Fair Market Rent indicator, whose download returns 202 with an empty
+      body. Zillow measures asking rents rather than HUD's payment standard, so it is a
+      different quantity — closer to what a mover would actually pay.
 
   - id: cost_rent_median
     domain: cost_housing
@@ -35,9 +48,14 @@ indicators:
     domain: cost_housing
     label: Regional price parity, all items
     source: bea_rpp
-    geo_level: metro
+    geo_level: county
+    crosswalk_from: metro
     curve: lower_better
     unit: index
+    notes: >
+      Published per metro area; carried onto counties via the CBSA delineation file.
+      Counties outside any metro have no RPP and stay missing — assigning them the national
+      average would flatter rural places on the very dimension being measured.
 
   - id: cost_property_tax_rate
     domain: cost_housing
@@ -323,8 +341,11 @@ indicators:
   - id: econ_unemployment_rate
     domain: career_economy
     label: Unemployment rate
-    source: bls_laus
+    source: chr_rwjf
     geo_level: county
+    notes: >
+      Sourced from County Health Rankings, which republishes the BLS county series. Saves a
+      separate LAUS ingest for the same underlying numbers.
     curve: lower_better
     unit: percent
 
