@@ -11,6 +11,7 @@ help:
 	@echo ""
 	@echo "questionnaire            Run it locally.  PERSON=practice|emil|winsor  RESET=1"
 	@echo "calibrate    Check the elicited weights against places they already know"
+	@echo "audit        Check the system against the ten principles in GOAL.md"
 	@echo "data         Download + checksum all sources (needs network - see docs/network-allowlist.md)"
 	@echo "universe     Build the fixed candidate universe          [Phase 1]"
 	@echo "features     Join, transform, percentile-rank            [Phase 2]"
@@ -29,6 +30,9 @@ RESET ?=
 
 questionnaire:
 	@$(PY) -m wlm.questionnaire.server --person $(PERSON) $(if $(RESET),--reset,)
+
+audit:
+	@$(PY) -m wlm.diagnostics.audit
 
 calibrate:
 	@$(PY) -m wlm.diagnostics.calibration

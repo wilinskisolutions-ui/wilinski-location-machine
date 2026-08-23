@@ -117,6 +117,11 @@ def anchored_band_questions(spec: dict, wide: pl.DataFrame, registry: dict) -> l
                 "type": "scale",
                 "text": f"{entry['label']}",
                 "anchor": f"{BASELINE_LABEL}: {_fmt(value, entry.get('unit'))}",
+                # The raw number, carried alongside the formatted string. profile.py must
+                # read THIS. Parsing the display text turned "79%" into 79.0 on an
+                # indicator whose data runs 0-1, putting the band outside the distribution
+                # entirely and killing the indicator silently.
+                "anchor_value": float(value),
                 "help": "Compared with what you have now.",
                 "options": [s["label"] for s in spec["scale"]],
                 "offsets": [s["offset"] for s in spec["scale"]],

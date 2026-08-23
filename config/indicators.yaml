@@ -38,14 +38,6 @@ indicators:
       body. Zillow measures asking rents rather than HUD's payment standard, so it is a
       different quantity — closer to what a mover would actually pay.
 
-  - id: cost_rent_median
-    domain: cost_housing
-    label: Median rent (HUD Fair Market Rent, 2BR)
-    source: hud_fmr
-    geo_level: county
-    curve: lower_better
-    direction: universal
-    unit: USD/month
 
   - id: cost_price_parity
     domain: cost_housing
@@ -624,6 +616,30 @@ indicators:
     direction: universal
     unit: per10k
     notes: NAICS 71 — venues, museums, sports, parks and recreation businesses.
+
+  - id: amen_food_drink_total
+    domain: recreation_lifestyle
+    label: Total restaurants and bars
+    source: census_cbp
+    geo_level: county
+    curve: higher_better
+    direction: universal
+    transform: log
+    unit: count
+    notes: >
+      Variety, as opposed to the per-capita density above. Per-capita alone rewards tourist
+      towns: San Juan County CO (population 821) shows 158 restaurants per 10k against
+      Manhattan's 57. Both questions are real and they are not the same question.
+
+  - id: amen_arts_rec_total
+    domain: recreation_lifestyle
+    label: Total arts, entertainment and recreation venues
+    source: census_cbp
+    geo_level: county
+    curve: higher_better
+    direction: universal
+    transform: log
+    unit: count
 
   - id: amen_grocery_per10k
     domain: recreation_lifestyle

@@ -17,13 +17,35 @@ from pathlib import Path
 import polars as pl
 import yaml
 
-from wlm.elicit import compare, domain_weights_from_choices, fit_choices, normalize_budget
+from wlm.elicit import (
+    blend,
+    compare,
+    domain_weights_from_choices,
+    fit_choices,
+    normalize_budget,
+)
 from wlm.paths import CONFIG, PROCESSED
 
 # How far each step on the "compared to Harrisburg" scale moves a band, as a fraction of
 # the indicator's national spread. One step is a noticeable but not drastic change.
 STEP_FRACTION = 0.6
 BAND_HALF_WIDTH = 0.5  # half-width of the accepted band, also in national standard deviations
+
+
+def domains_without_data() -> set[str]:
+    """Domains carrying no populated indicator at all.
+
+    A weight assigned to one of these evaporates on renormalisation. Emil could rate
+    schools his top priority and it would change nothing, silently — so it is reported
+    instead of swallowed.
+    """
+    registry = _registry()
+    f = pl.read_parquet(PROCESSED / "features.parquet").filter(pl.col("value").is_not_null())
+    populated = set(f["indicator_id"].unique())
+    by_domain: dict[str, list[str]] = {}
+    for iid, entry in registry.items():
+        by_domain.setdefault(entry["domain"], []).append(iid)
+    return {d for d, ids in by_domain.items() if not any(i in populated for i in ids)}
 
 
 def _registry() -> dict[str, dict]:
@@ -59,14 +81,15 @@ def build_profile(session, questions: list[dict]) -> dict:
 
     # Blend, preferring the revealed weights when the choices carry signal. Stated
     # allocation alone is closer to self-report, which Principle 7 exists to avoid.
+    data_less = domains_without_data()
     if fit.is_informative and revealed:
-        weights = {d: round(0.65 * revealed.get(d, 0) + 0.35 * stated.get(d, 0), 2)
-                   for d in set(revealed) | set(stated)}
-        weights = normalize_budget(weights)
+        weights, weight_notes = blend(stated, revealed, data_less=data_less)
         basis = "trade-off choices (65%) blended with stated allocation (35%)"
     else:
-        weights = stated
-        basis = "stated allocation only — trade-off choices did not carry enough signal"
+        weights, weight_notes = normalize_budget(stated), [
+            "trade-off choices did not carry enough signal; stated allocation only"
+        ]
+        basis = "stated allocation only — the choices were too close to random to fit"
 
     # --- curve overrides from the anchored band questions ---
     overrides: dict[str, dict] = {}
@@ -85,10 +108,12 @@ def build_profile(session, questions: list[dict]) -> dict:
             overrides[indicator] = {"indifferent": True}
             continue
 
-        anchor = float(question["anchor"].split(":")[-1].strip()
-                       .replace("$", "").replace(",", "").replace("°F", "")
-                       .replace('"', "").replace(" yrs", "").replace("%", "")
-                       .replace("k", "000").split()[0])
+        # Read the raw value. Never re-parse the formatted string: it is rounded, unit-
+        # suffixed and sometimes rescaled for display, and getting that wrong is silent.
+        anchor = question.get("anchor_value")
+        if anchor is None:
+            continue
+        anchor = float(anchor)
         mean, std = spreads[indicator]
         step = (std or abs(mean) * 0.1) * STEP_FRACTION
         centre = anchor + offset * step
@@ -134,8 +159,16 @@ def build_profile(session, questions: list[dict]) -> dict:
             "informative": fit.is_informative,
             "contradictions": fit.contradictions,
             "stated_vs_revealed": compare(stated, revealed),
+            "weighting_notes": weight_notes,
         },
         "domain_weights": weights,
+        # Within-domain weights, straight from the trade-off fit.
+        #
+        # Without these, a domain weight is spread evenly over everything in it: weighting
+        # climate at 30 points diluted winter temperature to about 1/16, because the domain
+        # holds sixteen indicators. A couple asking for warm winters got places averaging
+        # 48F instead of the 50-70F they asked for. The end-to-end test caught it.
+        "indicator_weights": {k: round(v, 5) for k, v in fit.weights.items()},
         "curve_overrides": overrides,
         "knockouts": knockouts,
         "sensitive_opt_in": sensitive,

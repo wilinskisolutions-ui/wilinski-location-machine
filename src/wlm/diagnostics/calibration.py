@@ -16,6 +16,7 @@ from pathlib import Path
 import polars as pl
 import yaml
 
+from wlm.features.curves import desirability
 from wlm.paths import CONFIG, OUTPUT, PROCESSED, ROOT
 
 PROFILES = ROOT / "profiles"
@@ -56,7 +57,7 @@ def score_places(geo_ids: list[str], weights: dict[str, float]) -> dict[str, flo
     """
     registry = {i["id"]: i for i in yaml.safe_load((CONFIG / "indicators.yaml").read_text())["indicators"]}
     f = pl.read_parquet(PROCESSED / "features.parquet").filter(
-        pl.col("geo_id").is_in(geo_ids) & pl.col("percentile").is_not_null()
+        pl.col("geo_id").is_in(geo_ids) & pl.col("value").is_not_null()
     )
     out: dict[str, float] = {}
     for geo_id, group in f.group_by("geo_id"):
@@ -68,11 +69,18 @@ def score_places(geo_ids: list[str], weights: dict[str, float]) -> dict[str, flo
             w = weights.get(entry["domain"], 0.0)
             if w <= 0:
                 continue
-            # Orient every percentile so higher means better before weighting.
-            p = row["percentile"]
-            if entry["curve"] == "lower_better":
-                p = 1.0 - p
-            weighted += w * p
+            # Use the real preference curve. Treating every percentile as monotone scored
+            # ideal_band indicators wrongly in the one check meant to validate everything —
+            # a town of exactly the right size looked mediocre because it sat mid-distribution.
+            d = desirability(
+                curve=entry["curve"],
+                value=row["value"],
+                percentile=row["percentile"],
+                params=entry.get("curve_params"),
+            )
+            if d is None:
+                continue
+            weighted += w * d
             total += w
         if total:
             out[geo_id[0] if isinstance(geo_id, tuple) else geo_id] = weighted / total

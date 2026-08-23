@@ -115,14 +115,70 @@ def fit_choices(
 
 
 def domain_weights_from_choices(fit: ChoiceFit, domain_of: dict[str, str]) -> dict[str, float]:
-    """Roll indicator importances up to domains, normalised to 100."""
-    totals: dict[str, float] = {}
+    """Roll indicator importances up to domains, normalised to 100.
+
+    Uses the **mean** of a domain's indicator weights, not the sum.
+
+    Summing made domain weight depend on how many attributes that domain happened to
+    contribute to the choice set. A synthetic respondent who valued every attribute exactly
+    equally came out with climate at 30.8 and healthcare at 7.8 — a 4x spread produced
+    entirely by climate having four attributes and healthcare one. That measured the design
+    of the questionnaire rather than anyone's preferences.
+
+    `tests/test_end_to_end.py::TestEqualPreferences` is the regression guard.
+    """
+    grouped: dict[str, list[float]] = {}
     for indicator, weight in fit.weights.items():
         domain = domain_of.get(indicator)
         if domain:
-            totals[domain] = totals.get(domain, 0.0) + weight
-    grand = sum(totals.values())
-    return {d: round(v / grand * 100, 2) for d, v in totals.items()} if grand else {}
+            grouped.setdefault(domain, []).append(weight)
+
+    means = {d: sum(ws) / len(ws) for d, ws in grouped.items()}
+    grand = sum(means.values())
+    return {d: round(v / grand * 100, 2) for d, v in means.items()} if grand else {}
+
+
+def blend(
+    stated: dict[str, float],
+    revealed: dict[str, float],
+    *,
+    revealed_share: float = 0.65,
+    data_less: set[str] | None = None,
+) -> tuple[dict[str, float], list[str]]:
+    """Combine stated and revealed weights without silently shrinking either.
+
+    The naive blend punished any domain absent from the trade-off block: its revealed weight
+    was 0, so blending cut it to 35% of what the household actually asked for. Five of
+    eleven domains were in that position, which meant the instrument structurally could not
+    hear them on schools, jobs or community.
+
+    Domains present in both are blended. Domains the trade-offs never covered keep their
+    stated weight, and everything is renormalised together afterwards.
+    """
+    covered = set(revealed)
+    combined: dict[str, float] = {}
+    for domain in set(stated) | covered:
+        if domain in covered:
+            combined[domain] = (
+                revealed_share * revealed.get(domain, 0.0)
+                + (1 - revealed_share) * stated.get(domain, 0.0)
+            )
+        else:
+            combined[domain] = stated.get(domain, 0.0)
+
+    notes = []
+    uncovered = sorted(set(stated) - covered - (data_less or set()))
+    if uncovered:
+        notes.append(
+            "weighted from the stated allocation alone (no trade-off attributes): "
+            + ", ".join(uncovered)
+        )
+    if data_less:
+        notes.append(
+            "weighted but CANNOT AFFECT THE RANKING — no data for: "
+            + ", ".join(sorted(data_less))
+        )
+    return normalize_budget(combined), notes
 
 
 def normalize_budget(allocation: dict[str, float], total: float = 100.0) -> dict[str, float]:

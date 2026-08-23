@@ -165,6 +165,16 @@ sections:
         - env_pm25_annual
         - form_population
         - hazard_fatality_risk_per100k
+        # Added after the audit: without these, career and community had no trade-off
+        # attributes at all, so their revealed weight was structurally zero and anything
+        # the household said about them was cut to ~35%.
+        - econ_unemployment_rate
+        - econ_industry_diversity
+        - comm_social_associations
+        - comm_median_age
+      # Education, family_childcare and the sensitive layer are deliberately absent:
+      # the first two have no data yet (a weight there is reported as inapplicable rather
+      # than quietly dropped), and sensitive dimensions stay opt-in only (Principle 10).
       repeat_for_consistency: 3
       maps_to: {kind: weight_domain, target: all, sets: weights}
 

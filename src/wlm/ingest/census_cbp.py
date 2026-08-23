@@ -34,6 +34,19 @@ NAICS_MAP: dict[str, str] = {
     "------": "amen_establishments_per10k",
 }
 
+# Absolute counts, alongside the per-capita rates.
+#
+# Per-capita alone measures amenities *per resident*, which spikes in tourist economies:
+# San Juan County, Colorado (population 821, Silverton) shows 158 restaurants per 10,000
+# against Manhattan's 57. That is not "more to do" — it is a ski town serving visitors.
+# Variety and density are different questions and a couple asking "is there anything going
+# on here" wants both, so both are measured. Log-transformed, since the difference between
+# 20 and 200 venues matters far more than between 2,000 and 2,180.
+NAICS_TOTALS: dict[str, str] = {
+    "722///": "amen_food_drink_total",
+    "71----": "amen_arts_rec_total",
+}
+
 
 def _rows(path: Path):
     path = Path(path)
@@ -84,5 +97,14 @@ def ingest(
         records.append(
             {"geo_level": "county", "geo_id": geoid, "indicator_id": indicator, "value": value}
         )
+        if (total_indicator := NAICS_TOTALS.get(naics)) is not None:
+            records.append(
+                {
+                    "geo_level": "county",
+                    "geo_id": geoid,
+                    "indicator_id": total_indicator,
+                    "value": establishments,
+                }
+            )
 
     return emit(records, source_file=Path(path).name, vintage=vintage)

@@ -5,9 +5,9 @@
 > is the project's working memory: a session that reads it should be able to resume cold
 > without re-deriving anything or re-asking a settled question.
 
-**Current phase:** Phase 3 — Questionnaire · **Status:** instrument **built and tested**;
-waiting on Emil and Winsor to answer it
-**Blocking Phase 4:** two completed profiles and the calibration ratings — nothing technical
+**Current phase:** Phase 4 — Scoring · **Status:** engine built; **7 bugs found and fixed
+by audit**; 9 of 10 GOAL.md principles pass (`output/audit.md`)
+**Blocking a real ranking:** two completed profiles. The questionnaire is now safe to take.
 **Last updated:** 2026-08-22
 
 ---
@@ -289,6 +289,47 @@ indicators are place-level and the baseline lookup only read county level — th
 would have kept my provisional guesses. And the older validator fixtures had to be updated
 once `direction` became mandatory, which is the validator doing its job.
 
+### 2026-08-22 — Logic audit: seven bugs, two of which corrupted the weights
+Emil asked whether the questions, data and machinery actually hold together. They did not.
+Every finding below was reproduced against live data before being fixed.
+
+| # | Bug | Why it mattered | Fix |
+|---|---|---|---|
+| 1 | **5 of 11 domains had no trade-off attributes** — career, education, family, community, sensitive | Their revealed weight was structurally 0, and the 65/35 blend cut whatever the household *said* about them to ~35%. The instrument could not hear them on schools or jobs. | Added career and community attributes; `blend()` now keeps uncovered domains at their stated weight and renormalises. |
+| 2 | **Attribute count inflated domain weight** (sum, not mean) | A respondent valuing *everything equally* produced climate 30.8 vs healthcare 7.8 — a **4× spread measuring my questionnaire design, not their values**. | Domain weight is the mean of its indicator weights. Spread fell to 1.25×, which is sampling noise. |
+| 3 | **Percentage anchors parsed at the wrong scale** | `profile.py` read the baseline out of the *display string*: "79%" became 79.0 on data running 0–1, putting the band outside the distribution. **0 places matched; the indicator was silently dead.** | Carry `anchor_value` (raw float). Band now spans 0.80–0.86 with 1,798 places inside. *Never parse back out of something formatted for humans.* |
+| 4 | Duplicate rent indicator (`cost_rent_median`, never populated) | Inflated the cost domain's indicator count, feeding bug 2. | Retired; ZORI measures the same thing and has data. |
+| 5 | Two domains carry no data at all | Weight on education or childcare evaporated on renormalisation, silently. | Scoring emits a named warning: *"education carries 18 points but has no data and cannot affect this ranking."* |
+| 6 | Counties (~35 indicators) and places (~8) would rank together | A shallow place could win on near-perfect coverage of very little. | Two-stage: counties first, then places within the winners. |
+| 7 | Calibration ignored `ideal_band` curves | A town of exactly the right size looked mediocre in the one check meant to validate everything. | Uses the real `desirability()`. |
+
+**Two more found by building the engine**, not predicted:
+
+- **Sparse candidates ranked high.** King County, Texas (population 215) placed 7th while
+  scored on 48% of the weight. Added an 80% weight-coverage floor; exclusions are counted,
+  not silent.
+- **Per-capita amenity density measures tourism, not choice.** San Juan County CO
+  (population 821, Silverton) shows **158 restaurants per 10k against Manhattan's 57**.
+  Added absolute-variety indicators (`amen_food_drink_total`, `amen_arts_rec_total`,
+  log-transformed) so density and variety are asked separately — they are different
+  questions.
+
+**And one the end-to-end test caught by itself**, which is the point of having it: a couple
+asking for 50–70°F winters got places averaging 48°F, because `climate_environment` holds
+sixteen indicators and a bare domain weight dilutes winter to about 1/16. The trade-off fit
+already produced indicator-level weights; they were never wired into scoring. Now they are —
+the same couple gets 51.6°F.
+
+### 2026-08-22 — Scoring engine built (Phase 4 core)
+`src/wlm/scoring/engine.py`: desirability via the real curves, weighted **geometric** mean
+within then across domains (so one catastrophic domain cannot be averaged away), coverage
+renormalisation, knockouts as an inspectable mask reporting what each removed, `worst_domain`,
+two-person joint score with an explicit disagreement column, and Dirichlet sensitivity bands.
+
+**Audit result: 9 of 10 principles pass** (`make audit`). Principle 9 is PARTIAL — sensitivity
+is computed but no report emits it alongside a ranking yet. That must be wired before any
+shortlist is shown, or a rank would be presented without its uncertainty.
+
 ---
 
 ## Data inventory
@@ -365,7 +406,8 @@ cases are covered by `make test` (90 tests, none needing network).
 
 1. **Emil practises, then both answer.** `make questionnaire PERSON=practice`, then
    `PERSON=emil`, then `PERSON=winsor`. See `questionnaire/HOW-TO-RUN.md`. ~45 minutes each.
-   **Nothing else can proceed until this happens.**
+   **Now safe to take** — the weight-corrupting bugs are fixed. Nothing else can proceed
+   until this happens.
 2. **`make calibrate`** — if the elicited weights do not reproduce their own ratings of
    places they know, the weights are wrong and no ranking should be trusted yet.
 3. **Optional data top-ups**, none blocking: education 0/6 (SEDA needs one manual download,
