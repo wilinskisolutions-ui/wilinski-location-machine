@@ -15,6 +15,24 @@ name is checked against an allowlist, so a typo cannot overwrite real answers.
 
 Stop with `Ctrl-C`.
 
+## The start screen
+
+The first thing you see is the eleven categories the ranking is built from, each with a few
+lines explaining exactly what it measures — which sources, which numbers, and what is still
+missing. Written so it still makes sense in six months when "urban_form" has stopped meaning
+anything on its own.
+
+You can adjust any weight there and **Save weights**, which writes to
+`config/domains.yaml`. Two things worth knowing:
+
+- Those numbers are **placeholders**. The questionnaire replaces them by watching which
+  trade-offs you actually make, which is more reliable than anyone's self-assessment.
+- Tick **lock** on a category to keep your number instead of the elicited one. That is a
+  deliberate override of the rule in `GOAL.md` that weights come from trade-offs, so it gets
+  recorded in your profile — it will never be mistaken for something you were asked.
+
+The screen is reachable any time from **Categories & weights** at the bottom of any question.
+
 ## Then the real thing, one at a time
 
 ```bash

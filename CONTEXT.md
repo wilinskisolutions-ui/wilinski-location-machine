@@ -330,6 +330,30 @@ two-person joint score with an explicit disagreement column, and Dirichlet sensi
 is computed but no report emits it alongside a ranking yet. That must be wired before any
 shortlist is shown, or a rank would be presented without its uncertainty.
 
+### 2026-08-22 — Start screen: category explanations and an adjustable weight editor
+Emil asked for two things: a way to adjust category weights later, and a few lines per
+category explaining what it contains, because "urban_form" and "health_care" would stop
+meaning anything once he had forgotten the details.
+
+**Descriptions rewritten** from one-liners to 55–75 words each, naming the actual sources
+and numbers, and — importantly — **what is still missing** from each. Education says out
+loud that it is empty pending SEDA; safety says FBI crime data is absent and why.
+
+**Weight editor** on the start screen, reachable any time from any question. Writes back to
+`config/domains.yaml` by editing lines in place rather than re-dumping the file, so the
+comments explaining each weight survive. Rejects any total that is not 100.
+
+**The `locked` flag** is the honest part. Principle 7 says weights come from forced
+trade-offs, so a hand-set weight is an override of the charter. Locking one keeps it through
+elicitation *and records it in the profile as hand-set* — the difference between an explicit
+override and a silent one.
+
+**A misunderstanding worth recording:** Emil read "climate is 4× safety" from my bug report
+and disagreed. The 4× was the *bug* (climate 30.8 vs healthcare 7.8 from attribute-count
+inflation), since fixed. The actual placeholder ratio is 1.4×. Demonstrated that weights do
+drive the answer — moving safety from 10 to 20 and climate from 14 to 4 changed 3 of the top
+5 counties.
+
 ---
 
 ## Data inventory

@@ -12,25 +12,47 @@
 domains:
   - id: cost_housing
     label: Cost of living and housing
-    description: Purchase prices, rents, price parity, property and income tax burden, utilities.
+    description: >
+      What it costs to live there. Median home price and asking rent (Zillow),
+      how far a dollar actually goes (BEA regional price parity), property tax as a share of
+      home value, and home price divided by local income — which is the one that says whether
+      a place is affordable on its own salaries rather than just cheap.
+      Not yet included: electricity prices, insurance, state income tax.
     scoring: true
     default_weight: 18
 
   - id: climate_environment
     label: Climate, environment and hazard
-    description: Temperature, precipitation, snow, humidity, sunshine, air quality, natural hazard risk, terrain.
+    description: >
+      What the weather is like and what could go wrong. Winter and summer
+      averages and daily extremes, heating and cooling degree days, rain and snowfall — plus
+      six FEMA disaster-risk measures (hurricane, wildfire, heat wave, drought, tornado, and a
+      composite), expected hazard deaths per 100,000, and air quality (PM2.5).
+      This is the largest domain, and it deliberately holds the counterweight to wanting warmth:
+      warm-and-coastal means hurricanes, warm-and-inland means heat and drought.
     scoring: true
     default_weight: 14
 
   - id: urban_form
     label: Urban form and connectivity
-    description: Density, walkability, transit, commute time, airport access, distance to a major city.
+    description: >
+      How big, how dense, and how well connected. Population and people per square
+      mile, average commute time, and the transatlantic airport measures built for your family
+      in Europe — how many European cities you can reach nonstop, how far the nearest such
+      airport is, and how busy it is (busier usually means cheaper fares).
+      Not yet included: public transit ridership, broadband availability.
     scoring: true
     default_weight: 12
 
   - id: career_economy
     label: Career and economy
-    description: Job market depth, wage levels, industry mix, unemployment, economic resilience if a job is lost.
+    description: >
+      Whether you could earn a living there, and what happens if a job ends.
+      Currently unemployment rate and industry diversity — the second measures whether the local
+      economy rests on one employer or many, which matters more than average wages if things go
+      wrong.
+      Thin at present: wages and job growth are registered but not yet populated. If your income
+      is location-independent, this domain should probably carry very little weight.
     scoring: true
     default_weight: 12
 
@@ -40,38 +62,66 @@ domains:
   - id: education
     label: Education
     description: >
-      School quality measured by learning growth rather than raw achievement, district
-      choice, per-pupil spending, graduation rates, higher education access.
+      School quality, measured by how much students improve rather than raw test
+      scores — because raw scores mostly track family income, so ranking on them would measure
+      how wealthy the neighbours are and call it good schools.
+      Currently EMPTY: the SEDA learning-growth data needs one manual download. Any weight put
+      here does nothing until that lands, and the scoring will say so out loud.
     scoring: true
     default_weight: 6
 
   - id: family_childcare
     label: Family and childcare
-    description: Childcare cost and availability by age band.
+    description: >
+      What childcare costs, by age band, from the Department of Labor county
+      database.
+      Currently EMPTY — not yet ingested. Only relevant if children are in the picture; if not,
+      this should be zero.
     scoring: true
     default_weight: 4
 
   - id: health_care
     label: Health and healthcare
-    description: Population health outcomes, provider availability, hospital quality, shortage areas.
+    description: >
+      Whether you can get care, and how long people there live. Life expectancy at
+      birth, and how many residents there are per primary care physician — a rural county can
+      have one doctor for several thousand people, which is a practical problem long before it
+      is a statistical one.
+      Not yet included: hospital quality ratings, designated shortage areas.
     scoring: true
     default_weight: 10
 
   - id: safety
     label: Safety
-    description: Violent and property crime rates. Coverage is uneven — see docs/data-sources.md.
+    description: >
+      How likely the place is to hurt you — deliberately broader than crime. Road deaths,
+      drug overdose deaths and firearm deaths per 100,000, all from death certificates and crash
+      records, so coverage is near-complete.
+      Road deaths especially: rural counties often run several times the metro rate, and that
+      difference is usually larger than the crime difference nobody stops talking about.
+      Not yet included: violent and property crime (FBI reporting is voluntary and patchy).
     scoring: true
     default_weight: 10
 
   - id: recreation_lifestyle
     label: Recreation and lifestyle
-    description: Outdoor access, parks and trails, amenity density, food and culture, third places.
+    description: >
+      Whether there is anything to do. Restaurants and bars, arts and
+      entertainment venues, grocery stores, gyms and overall business density — measured two ways
+      on purpose: per resident (how dense) and total (how much choice).
+      Both matter and they disagree: a ski town of 800 people shows more restaurants per head
+      than Manhattan. Also includes park access.
     scoring: true
     default_weight: 8
 
   - id: community_culture
     label: Community and social fabric
-    description: Age structure, transience vs. rootedness, social capital, diversity, household composition.
+    description: >
+      Who your neighbours would be. Median age, the share of people who lived
+      in the same house a year ago (rootedness versus churn), and membership associations per
+      10,000 — clubs, churches, leagues, the things that make it possible to meet anyone.
+      Shallow at present, with only three measures. Says nothing about whether you would
+      personally fit in; that is what the sensitive layer is for, and it is off by default.
     scoring: true
     default_weight: 6
 
@@ -80,9 +130,11 @@ domains:
   - id: sensitive
     label: Sensitive dimensions (opt-in)
     description: >
-      Political climate, religious adherence, demographic composition, state social policy.
-      Stored as direction-neutral raw indicators — the household's preference curve decides
-      whether high, low, or a band scores well. The registry assumes no direction.
+      Political lean, religious adherence, and share of people born abroad.
+      Weight zero unless you deliberately turn it on. The engine stores the raw numbers and your
+      own preference decides which direction counts as better — it assumes nothing.
+      Kept separate precisely because these are the measures most likely to reproduce the
+      shortlist you started out frustrated by.
     scoring: true
     default_weight: 0
     sensitive: true

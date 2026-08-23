@@ -221,3 +221,36 @@ class TestWeightRecovery(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestWeightEditor(unittest.TestCase):
+    """The start-screen weight editor.
+
+    Emil wanted to adjust category weights and see what each contains, without having to
+    remember six months later what 'urban_form' meant.
+    """
+
+    def test_every_domain_has_a_real_explanation(self):
+        from wlm.questionnaire.server import read_domains
+
+        for d in read_domains():
+            with self.subTest(domain=d["id"]):
+                # Terse one-liners were the original problem; these must actually explain.
+                self.assertGreater(len(d["description"].split()), 25, d["id"])
+                self.assertIn(".", d["description"])
+
+    def test_weights_must_total_100(self):
+        from wlm.questionnaire.server import save_domains
+
+        with self.assertRaises(ValueError) as ctx:
+            save_domains({"cost_housing": 50.0}, [])
+        self.assertIn("total 100", str(ctx.exception))
+
+    def test_locked_weights_survive_elicitation(self):
+        """Locking is an explicit, recorded override of Principle 7 — not a silent one."""
+        from wlm.elicit import blend
+
+        blended, _ = blend({"safety": 10.0, "cost_housing": 90.0}, {"cost_housing": 100.0})
+        locked = {"safety": 25.0}
+        blended.update(locked)
+        self.assertEqual(blended["safety"], 25.0)

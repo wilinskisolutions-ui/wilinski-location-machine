@@ -32,6 +32,21 @@ STEP_FRACTION = 0.6
 BAND_HALF_WIDTH = 0.5  # half-width of the accepted band, also in national standard deviations
 
 
+def locked_weights() -> dict[str, float]:
+    """Domain weights the household pinned by hand on the start screen.
+
+    Principle 7 says weights come from forced trade-offs. Locking one overrides that for
+    that domain — deliberately, and recorded in the profile so it is never mistaken for an
+    elicited number.
+    """
+    domains = yaml.safe_load((CONFIG / "domains.yaml").read_text())["domains"]
+    return {
+        d["id"]: float(d["default_weight"])
+        for d in domains
+        if d.get("locked") and d.get("scoring")
+    }
+
+
 def domains_without_data() -> set[str]:
     """Domains carrying no populated indicator at all.
 
@@ -82,9 +97,20 @@ def build_profile(session, questions: list[dict]) -> dict:
     # Blend, preferring the revealed weights when the choices carry signal. Stated
     # allocation alone is closer to self-report, which Principle 7 exists to avoid.
     data_less = domains_without_data()
+    locked = locked_weights()
     if fit.is_informative and revealed:
         weights, weight_notes = blend(stated, revealed, data_less=data_less)
         basis = "trade-off choices (65%) blended with stated allocation (35%)"
+        if locked:
+            # A locked weight was set deliberately on the start screen and survives
+            # elicitation. This is an explicit, recorded override of Principle 7 rather
+            # than a silent one — which is the difference that matters.
+            weights.update(locked)
+            weights = normalize_budget(weights)
+            weight_notes.append(
+                "locked by hand, not elicited: "
+                + ", ".join(f"{k}={v:g}" for k, v in sorted(locked.items()))
+            )
     else:
         weights, weight_notes = normalize_budget(stated), [
             "trade-off choices did not carry enough signal; stated allocation only"

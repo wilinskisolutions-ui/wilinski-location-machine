@@ -30,6 +30,61 @@ from wlm.questionnaire.session import (
 
 HOST, PORT = "127.0.0.1", 8765
 
+
+def read_domains() -> list[dict]:
+    """Scoring domains with their weights, descriptions and lock state."""
+    import yaml
+
+    from wlm.paths import CONFIG
+
+    data = yaml.safe_load((CONFIG / "domains.yaml").read_text())["domains"]
+    return [
+        {
+            "id": d["id"],
+            "label": d["label"],
+            "description": " ".join((d.get("description") or "").split()),
+            "weight": d["default_weight"],
+            "locked": bool(d.get("locked")),
+        }
+        for d in data
+        if d.get("scoring")
+    ]
+
+
+def save_domains(weights: dict[str, float], locked: list[str]) -> None:
+    """Write adjusted weights back to config/domains.yaml.
+
+    Edits the existing file line by line rather than re-dumping it, so every comment
+    explaining why a weight is what it is survives the round trip.
+    """
+    import re
+
+    from wlm.paths import CONFIG
+
+    path = CONFIG / "domains.yaml"
+    total = sum(float(v) for v in weights.values())
+    if weights and abs(total - 100.0) > 0.5:
+        raise ValueError(f"weights must total 100, got {total:g}")
+
+    lines = path.read_text().split("\n")
+    out, current = [], None
+    for line in lines:
+        m = re.match(r"^  - id: (\S+)", line)
+        if m:
+            current = m.group(1)
+        if current in weights and re.match(r"^    default_weight:", line):
+            out.append(f"    default_weight: {float(weights[current]):g}")
+            continue
+        if current is not None and re.match(r"^    locked:", line):
+            continue  # rewritten below
+        if current in weights and re.match(r"^    scoring:", line):
+            out.append(line)
+            if current in locked:
+                out.append("    locked: true")
+            continue
+        out.append(line)
+    path.write_text("\n".join(out))
+
 PAGE = """<!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Where should we live?</title><style>
@@ -67,16 +122,65 @@ textarea{min-height:100px;resize:vertical}
 .foot{margin-top:34px;padding-top:14px;border-top:1px solid var(--line);color:var(--muted);font-size:13px;display:flex;justify-content:space-between}
 .foot a{color:var(--muted)}
 .done{text-align:center;padding:50px 0}.done h2{font-size:26px}
+.cat{border:1px solid var(--line);background:var(--card);border-radius:10px;padding:14px 16px;margin-bottom:10px}
+.cathead{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+.cathead label{flex:1;font-weight:600;font-size:16px}
+.cathead input{width:64px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg);font:inherit;text-align:right}
+.cat p{margin:0;color:var(--muted);font-size:14px;line-height:1.5}
+.lock{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:5px;white-space:nowrap}
+.empty{color:var(--warn);font-weight:600;font-size:12px}
+.sticky{position:sticky;bottom:0;background:var(--bg);padding:12px 0;border-top:1px solid var(--line);margin-top:16px}
 </style></head><body><div class="wrap" id="app">Loading…</div>
 <script>
 let S=null;
 const $=(h)=>{const d=document.createElement('div');d.innerHTML=h;return d.firstElementChild};
 async function api(p,b){const r=await fetch(p,b?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}:{});return r.json()}
-async function load(){S=await api('/api/state'+location.search);render()}
+async function load(){S=await api('/api/state'+location.search);
+  // Fresh session opens on the categories screen; a resumed one goes straight back to work.
+  if(S.screen===undefined)S.screen=(!S.done&&S.index===0)?'start':'q';
+  render()}
 function esc(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+
+async function renderStart(){
+  const app=document.getElementById('app');
+  const {domains}=await api('/api/domains');
+  const total=domains.reduce((a,d)=>a+(+d.weight||0),0);
+  app.innerHTML=`<h1>Where should we live?</h1>
+    <p class="intro">Before you start: these are the categories the ranking is built from, and
+    how much each currently counts. <b>They are placeholder numbers</b> — the questionnaire
+    replaces them by watching which trade-offs you actually make.</p>
+    <p class="intro">Adjust one only if you want to. Tick <b>lock</b> to keep your number
+    instead of the elicited one — that gets recorded in your profile so it is never mistaken
+    for something you were asked.</p>
+    ${domains.map(d=>`<div class="cat">
+      <div class="cathead"><label for="w_${d.id}">${esc(d.label)}</label>
+        <span class="lock"><input type="checkbox" id="l_${d.id}" ${d.locked?'checked':''}> lock</span>
+        <input type="number" min="0" max="100" step="1" id="w_${d.id}" data-id="${d.id}" value="${d.weight}">
+      </div>
+      <p>${esc(d.description)}</p></div>`).join('')}
+    <div class="sticky"><div class="total" id="stot">${total} of 100 allocated</div>
+      <div class="nav">
+        <button class="go" id="begin">Start the questionnaire</button>
+        <button id="savew">Save weights</button>
+      </div></div>
+    <div class="foot"><span>Nothing here is sent anywhere</span></div>`;
+  const stot=document.getElementById('stot');
+  const recount=()=>{const s=[...app.querySelectorAll('input[type=number]')].reduce((a,x)=>a+(+x.value||0),0);
+    stot.textContent=`${s} of 100 allocated`;stot.className='total'+(Math.abs(s-100)<0.5?'':' bad');return s};
+  app.querySelectorAll('input[type=number]').forEach(i=>i.oninput=recount);
+  document.getElementById('savew').onclick=async()=>{
+    if(Math.abs(recount()-100)>0.5){alert('Weights must total 100.');return}
+    const w={},l=[];
+    app.querySelectorAll('input[type=number]').forEach(i=>{w[i.dataset.id]=+i.value;
+      if(document.getElementById('l_'+i.dataset.id).checked)l.push(i.dataset.id)});
+    const r=await api('/api/weights',{person:S.person,weights:w,locked:l});
+    if(r.error){alert(r.error)}else{alert('Saved to config/domains.yaml.')}};
+  document.getElementById('begin').onclick=()=>{S.screen='q';render()};
+}
 
 function render(){
   const app=document.getElementById('app');
+  if(S.screen==='start'){renderStart();return}
   if(S.done){app.innerHTML=`<div class="done"><h2>Done — thank you.</h2>
     <p class="intro">${esc(S.done_message)}</p></div>`;return}
   const q=S.question,pct=Math.round(100*S.index/S.total);
@@ -118,7 +222,8 @@ function render(){
       <button id="skip">Skip</button>
     </div>
     <div class="foot"><span>Saved automatically</span>
-      <a href="#" id="reset">Start over</a></div>`;
+      <span><a href="#" id="cats">Categories &amp; weights</a> &nbsp;·&nbsp;
+      <a href="#" id="reset">Start over</a></span></div>`;
 
   let picked=null,multi=new Set();
   app.querySelectorAll('.card,.opt').forEach(el=>el.onclick=()=>{
@@ -144,6 +249,7 @@ function render(){
     else if(picked!==null){submit(picked)} else {alert('Pick one, or press Skip.')}};
   document.getElementById('back').onclick=async()=>{S=await api('/api/back',{person:S.person});render()};
   document.getElementById('skip').onclick=()=>submit(null);
+  document.getElementById('cats').onclick=(e)=>{e.preventDefault();S.screen='start';render()};
   document.getElementById('reset').onclick=async(e)=>{e.preventDefault();
     if(confirm('Discard every answer and start again?')){S=await api('/api/reset',{person:S.person});render()}};
 }
@@ -220,6 +326,8 @@ class Handler(BaseHTTPRequestHandler):
         route = urlparse(self.path)
         if route.path == "/":
             return self._send(PAGE.encode(), "text/html; charset=utf-8")
+        if route.path == "/api/domains":
+            return self._json({"domains": read_domains()})
         if route.path == "/api/state":
             person = self._person((parse_qs(route.query).get("person") or [None])[0])
             return self._json(self._state(Session.load(person)))
@@ -232,6 +340,13 @@ class Handler(BaseHTTPRequestHandler):
             session = Session.load(self._person(body.get("person")))
         except (SessionError, ValueError) as exc:
             return self._json({"error": str(exc)}, 400)
+
+        if route == "/api/weights":
+            try:
+                save_domains(body.get("weights") or {}, body.get("locked") or [])
+            except ValueError as exc:
+                return self._json({"error": str(exc)}, 400)
+            return self._json({"domains": read_domains()})
 
         if route == "/api/answer":
             if body.get("value") is not None:

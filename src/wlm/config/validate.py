@@ -86,6 +86,9 @@ def check_domains(domains: list[dict]) -> None:
             scoring_total += w
         elif w != 0:
             err(f"domain '{did}': non-scoring domains must have default_weight 0, got {w}")
+        if "locked" in d and not isinstance(d["locked"], bool):
+            err(f"domain '{did}': 'locked' must be true or false")
+
         # Principle 10 — sensitive dimensions ship at weight zero.
         if d.get("sensitive") and w != 0:
             err(
