@@ -219,6 +219,74 @@ def joint(a: pl.DataFrame, b: pl.DataFrame) -> pl.DataFrame:
     ).sort("score_joint", descending=True)
 
 
+def two_stage(
+    features: pl.DataFrame,
+    universe: pl.DataFrame,
+    registry: dict[str, dict],
+    profile: dict,
+    *,
+    top_counties: int = 25,
+) -> tuple[pl.DataFrame, pl.DataFrame, ScoreReport]:
+    """Rank counties, then rank places inside the winners.
+
+    Counties carry roughly 35 indicators and places roughly 8 — climate, hazard, jobs and
+    health are all county-level. Ranking them in one list would compare things measured to
+    very different depths, and let a shallow place win on near-complete coverage of very
+    little.
+
+    So the deep data does the hard cut (which region), and the local data does the fine cut
+    (which town within it), which is also how people actually decide.
+    """
+    counties = features.filter(pl.col("geo_level") == "county")
+    county_scores, report = score(counties, registry, profile)
+    if county_scores.is_empty():
+        return county_scores, pl.DataFrame(), report
+
+    # Only counties that actually contain a town you could move to. 43% of US counties have
+    # no place above the 5,000 floor, and several were topping the ranking — a county you
+    # cannot move to a town in is not a candidate for this decision.
+    with_places = universe.filter(pl.col("geo_level") == "place").group_by("county_geoid").len()
+    livable = set(with_places["county_geoid"])
+    eligible = county_scores.filter(pl.col("geo_id").is_in(livable))
+    skipped = county_scores.head(top_counties).filter(~pl.col("geo_id").is_in(livable)).height
+    if skipped:
+        report.warnings.append(
+            f"{skipped} of the top {top_counties} counties contain no town above the "
+            "population floor; stage 2 skipped past them"
+        )
+
+    winners = set(eligible.head(top_counties)["geo_id"])
+    place_rows = universe.filter(
+        (pl.col("geo_level") == "place") & pl.col("county_geoid").is_in(winners)
+    ).select(["geo_id", "county_geoid"])
+    if place_rows.is_empty():
+        report.warnings.append("no places inside the winning counties")
+        return county_scores, pl.DataFrame(), report
+
+    # A place inherits its county's context and adds its own local detail
+    # (docs/methodology.md section 1). Scored on place-level indicators alone it would be
+    # judged on about seven things, none of them climate, hazard, jobs or health — which is
+    # where nearly all the weight sits.
+    own = features.filter(
+        (pl.col("geo_level") == "place") & pl.col("geo_id").is_in(set(place_rows["geo_id"]))
+    )
+    county_context = (
+        features.filter((pl.col("geo_level") == "county") & pl.col("geo_id").is_in(winners))
+        .rename({"geo_id": "county_geoid"})
+        .join(place_rows, on="county_geoid", how="inner")
+        .drop("county_geoid")
+        .with_columns(pl.lit("place").alias("geo_level"))
+    )
+    combined = pl.concat(
+        [own.select(sorted(own.columns)), county_context.select(sorted(own.columns))],
+        how="vertical",
+    )
+
+    place_scores, place_report = score(combined, registry, profile)
+    report.warnings.extend(place_report.warnings)
+    return county_scores, place_scores, report
+
+
 def sensitivity(
     features: pl.DataFrame,
     registry: dict[str, dict],
@@ -227,6 +295,7 @@ def sensitivity(
     draws: int = 200,
     concentration: float = 60.0,
     seed: int = 17,
+    top_n: int = 300,
 ) -> pl.DataFrame:
     """Rank stability under jittered weights.
 
@@ -238,6 +307,16 @@ def sensitivity(
     base = {k: v for k, v in (profile.get("domain_weights") or {}).items() if v > 0}
     if not base:
         return pl.DataFrame()
+
+    # Only jitter the contenders. Re-scoring all 3,144 counties took about 5 seconds a draw,
+    # so the default of 200 would have run for 17 minutes — and nobody needs to know whether
+    # rank 2,000 is stable. Narrowing to the top few hundred keeps the answer identical
+    # where it matters and makes it usable.
+    if top_n:
+        baseline, _ = score(features, registry, profile)
+        if not baseline.is_empty():
+            contenders = set(baseline.head(top_n)["geo_id"])
+            features = features.filter(pl.col("geo_id").is_in(contenders))
 
     domains = list(base)
     alpha = np.array([base[d] for d in domains], dtype=float)

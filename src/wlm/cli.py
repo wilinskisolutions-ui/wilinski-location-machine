@@ -161,7 +161,11 @@ def stage_universe(args) -> int:
     place_codes = RAW / "census_place_codes" / "national_place2020.txt"
     sub_est = RAW / "census_pep" / "sub-est2024.csv"
     co_est = RAW / "census_pep" / "co-est2024-alldata.csv"
-    acs_bulk = next((RAW / "census_acs5").glob("*.dat"), None)
+    # Name the table explicitly. This used to glob "*.dat" and take the first match, which
+    # silently became b25077 (home values) once the Tier 2 ACS tables were added — the
+    # universe build then failed looking for a population column that file has never had.
+    acs_bulk = RAW / "census_acs5" / "acsdt5y2023-b01003.dat"
+    acs_bulk = acs_bulk if acs_bulk.exists() else None
 
     missing = [p for p in (gaz_counties, gaz_places, place_codes, sub_est, co_est) if not p.exists()]
     if missing or acs_bulk is None:

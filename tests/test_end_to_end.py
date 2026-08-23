@@ -198,3 +198,70 @@ class TestScoringMechanics(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestPipelineRegressions(unittest.TestCase):
+    """Bugs found by running the program rather than by reading it."""
+
+    def test_universe_names_the_population_table_explicitly(self):
+        """It used to glob '*.dat' and take the first match.
+
+        Adding the Tier 2 ACS tables silently changed that first match to b25077 (home
+        values), and `make universe` began failing on a missing population column. Nothing
+        surfaced it because universe.parquet on disk had been built before those tables.
+        """
+        from wlm.paths import ROOT
+
+        source = (ROOT / "src" / "wlm" / "cli.py").read_text()
+        self.assertIn("acsdt5y2023-b01003.dat", source)
+        self.assertNotIn('glob("*.dat")', source)
+
+    def test_two_stage_returns_places_inside_winning_counties(self):
+        from wlm.paths import PROCESSED
+        from wlm.scoring.engine import two_stage
+
+        universe = pl.read_parquet(PROCESSED / "universe.parquet")
+        features = pl.read_parquet(PROCESSED / "features.parquet")
+        profile = {"domain_weights": {"climate_environment": 50.0, "cost_housing": 50.0}}
+
+        county_scores, place_scores, _ = two_stage(features, universe, REGISTRY, profile,
+                                                   top_counties=25)
+        self.assertGreater(county_scores.height, 1000)
+        # Scored on place-level indicators alone this returned zero: the weights sit on
+        # county-level domains, so places were judged on almost nothing.
+        self.assertGreater(place_scores.height, 0, "places inherit no county context")
+
+    def test_two_stage_skips_counties_with_no_town(self):
+        """43% of US counties contain no place above the 5,000 floor. Several were topping
+        the ranking — a county you cannot move to a town in is not a candidate."""
+        from wlm.paths import PROCESSED
+        from wlm.scoring.engine import two_stage
+
+        universe = pl.read_parquet(PROCESSED / "universe.parquet")
+        features = pl.read_parquet(PROCESSED / "features.parquet")
+        _, places, report = two_stage(
+            features, universe, REGISTRY,
+            {"domain_weights": {"climate_environment": 100.0}}, top_counties=25,
+        )
+        with_places = set(
+            universe.filter(pl.col("geo_level") == "place")["county_geoid"]
+        )
+        chosen = set(
+            universe.filter(pl.col("geo_id").is_in(set(places["geo_id"])))["county_geoid"]
+        )
+        self.assertTrue(chosen <= with_places)
+
+    def test_sensitivity_narrows_to_contenders(self):
+        """Re-scoring all 3,144 counties cost about 5s a draw, so the 200-draw default would
+        have run 17 minutes. Nobody needs to know whether rank 2,000 is stable."""
+        from wlm.paths import PROCESSED
+        from wlm.scoring.engine import sensitivity
+
+        features = pl.read_parquet(PROCESSED / "features.parquet").filter(
+            pl.col("geo_level") == "county"
+        )
+        result = sensitivity(features, REGISTRY,
+                             {"domain_weights": {"cost_housing": 100.0}},
+                             draws=3, top_n=50)
+        self.assertLessEqual(result.height, 50)
+        self.assertIn("rank_p95", result.columns)

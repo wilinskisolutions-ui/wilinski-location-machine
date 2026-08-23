@@ -354,6 +354,27 @@ inflation), since fixed. The actual placeholder ratio is 1.4×. Demonstrated tha
 drive the answer — moving safety from 10 to 20 and climate from 14 to 4 changed 3 of the top
 5 counties.
 
+### 2026-08-22 — Second bug sweep: four more, found by running rather than reading
+Emil asked whether the program actually works. Running it end to end found four bugs the
+test suite had not, because each sat in a path nothing exercised.
+
+| # | Bug | How it hid |
+|---|---|---|
+| 1 | **`make universe` was broken.** It picked the ACS population file with `glob("*.dat")` and took the first match. Adding the eight Tier 2 ACS tables silently changed that to `b25077` (home values), so the build failed on a missing population column. | `universe.parquet` on disk had been built *before* those tables landed, so every later stage kept working. A fresh clone would have failed immediately. |
+| 2 | **Two-stage county→place ranking was never implemented.** I described it as done. `engine.py` had no place stage at all. | Nothing tested it, and the county ranking looked fine on its own. |
+| 3 | **Sensitivity was unusably slow** — about 5 seconds a draw over all 3,144 counties, so the 200-draw default would have run ~17 minutes. | Only ever run with tiny draw counts. Now narrowed to the top 300 contenders: 50 draws in 29s, and nobody needs to know whether rank 2,000 is stable. |
+| 4 | **Places were scored on place-level indicators alone**, so stage 2 returned **zero places**. The weights sit on climate, cost, safety and health — all county-level — so places were judged on almost nothing and dropped. | Only visible once stage 2 existed. `docs/methodology.md` had specified inheritance since Phase 0; I never implemented it. |
+
+**And one structural finding.** 43% of US counties (1,359 of 3,144) contain no town above the
+5,000 floor, and several were topping the ranking — Irion County, Texas, population 1,526,
+ranked first. A county you cannot move to a town in is not a candidate for this decision, so
+stage 2 now skips past them and says how many it skipped.
+
+**System state after the sweep:** all eight `make` targets pass, 146 tests, 9,885 candidates,
+46 indicators, 29 files checksummed, 0 synthetic. `make audit` still reports 9 of 10
+principles passing — Principle 9 remains PARTIAL until sensitivity bands are emitted
+alongside a ranking, which is now fast enough to actually do.
+
 ---
 
 ## Data inventory
