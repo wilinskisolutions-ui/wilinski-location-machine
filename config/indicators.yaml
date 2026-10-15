@@ -271,6 +271,19 @@ indicators:
     unit: index
     notes: 1999 vintage but structural — terrain and water area, not time-varying.
 
+  - id: env_water_area_share
+    domain: climate_environment
+    label: Water area as share of the county (lakes, rivers, coast)
+    source: usda_amenities
+    geo_level: county
+    curve: higher_better
+    direction: universal
+    unit: share
+    notes: >
+      The water component of the USDA natural amenities scale, published on its own: percent
+      of the county's area that is water. Coastal counties include their bays and nearshore
+      water. Added 2026-10-15 for the atlas "Water & nature" factor, which the household chose.
+
   # ---------------- urban_form ----------------
   - id: form_population
     domain: urban_form

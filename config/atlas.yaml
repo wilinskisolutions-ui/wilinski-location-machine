@@ -1,0 +1,137 @@
+# The atlas: an interactive map over the same evidence the ranking uses.
+#
+# Factors regroup the registered indicators into the questions the household actually asks
+# while exploring ("can we afford it", "will a hurricane hit it", "is there a church
+# community"). The math is the engine's, unchanged: a weighted geometric mean of indicator
+# desirability within a factor (`engine.domain_scores`), then a weighted geometric mean
+# across factors with renormalisation over what a place has, and the same 80% coverage
+# floor. Only the grouping differs from config/domains.yaml.
+#
+# Every registered indicator must appear in exactly one factor, or in `excluded` with a
+# reason. `wlm.atlas.build` refuses to run otherwise, so an indicator cannot fall out of
+# the map by omission.
+#
+# `default_weight` is a STARTING POINT the household replaces on the map itself
+# (2026-10-15 decision: joint weights, set together). Weights sum to 100.
+
+factors:
+  - id: cost
+    label: Rent & cost
+    blurb: Market rent, home prices, how far a dollar goes, property tax.
+    default_weight: 16
+    indicators: [cost_rent_median_zori, cost_home_value_median, cost_price_parity,
+                 cost_property_tax_rate, cost_income_to_home_ratio, cost_electricity_price]
+
+  - id: safety
+    label: Safety
+    blurb: Road, overdose and firearm deaths per 100k; crime where reported.
+    default_weight: 14
+    indicators: [safety_traffic_fatality_rate, safety_overdose_death_rate,
+                 safety_firearm_death_rate, safety_violent_crime_rate, safety_property_crime_rate]
+
+  - id: hazard
+    label: Hurricane & hazard
+    blurb: FEMA risk for hurricane, wildfire, heat, drought, tornado; hazard deaths; air quality.
+    default_weight: 12
+    indicators: [hazard_nri_composite, hazard_nri_hurricane, hazard_nri_wildfire,
+                 hazard_nri_heatwave, hazard_nri_drought, hazard_nri_tornado,
+                 hazard_fatality_risk_per100k, env_pm25_annual]
+
+  - id: climate
+    label: Climate
+    blurb: Winter warmth, summer heat, rain and snow against your preferred band, plus the
+      USDA amenity scale (mostly mild winters, sun and low humidity).
+    default_weight: 10
+    indicators: [climate_temp_winter_mean, climate_temp_summer_mean, climate_winter_low,
+                 climate_summer_high, climate_heating_degree_days, climate_cooling_degree_days,
+                 climate_annual_precip, climate_annual_snowfall, env_natural_amenities]
+
+  - id: food
+    label: Downtown & food
+    blurb: Restaurants, bars, arts venues, gyms and shops, per resident and in total.
+    default_weight: 10
+    indicators: [amen_food_drink_per10k, amen_food_drink_total, amen_arts_rec_per10k,
+                 amen_arts_rec_total, amen_grocery_per10k, amen_fitness_per10k,
+                 amen_establishments_per10k]
+
+  - id: nature
+    label: Water & nature
+    blurb: How much of the county is water (lakes, rivers, coast), and park access.
+    default_weight: 8
+    indicators: [env_water_area_share, rec_park_access]
+
+  - id: church
+    label: Church community
+    blurb: Religious adherents as a share of residents (2020 US Religion Census).
+    default_weight: 8
+    indicators: [sens_religious_adherence]
+
+  - id: health
+    label: Health care
+    blurb: Life expectancy, people per primary-care doctor, shortage areas.
+    default_weight: 8
+    indicators: [health_life_expectancy, health_pcp_ratio, health_hpsa_shortage]
+
+  - id: airport
+    label: Flights to Europe
+    blurb: European nonstops from the best airport within reach, and how far it is.
+    default_weight: 6
+    indicators: [air_europe_destinations, air_europe_hub_distance, air_europe_passengers]
+
+  - id: community
+    label: Community
+    blurb: Clubs and associations per resident, rootedness, median age.
+    default_weight: 4
+    indicators: [comm_social_associations, comm_same_house_1yr, comm_median_age]
+
+  - id: town
+    label: Town size & commute
+    blurb: Population and density against your band, commute time, broadband, transit.
+    default_weight: 4
+    indicators: [form_population, form_population_density, form_mean_commute,
+                 form_transit_ridership_pc, form_broadband_gigabit]
+
+  - id: jobs
+    label: Local jobs
+    blurb: Unemployment, industry diversity, wages. Your income is portable, so it starts at 0.
+    default_weight: 0
+    indicators: [econ_unemployment_rate, econ_median_wage, econ_industry_diversity,
+                 econ_employment_growth_5y]
+
+  - id: schools
+    label: Schools & childcare
+    blurb: No kids planned, so it starts at 0. Graduation, staffing, spending, childcare cost.
+    default_weight: 0
+    indicators: [edu_learning_rate, edu_achievement_level, edu_spend_per_pupil,
+                 edu_student_teacher_ratio, edu_graduation_rate, edu_district_choice_count,
+                 family_childcare_cost_infant, family_childcare_cost_toddler]
+
+# Sensitive opt-ins (GOAL.md Principle 10). The household chose "church community" on
+# 2026-10-15, so religious adherence is switched on, scored higher-is-better: their stated
+# direction, not an assumption. Partisan lean and foreign-born share stay off.
+sensitive_opt_in:
+  sens_religious_adherence: {curve: higher_better}
+
+excluded:
+  sens_partisan_lean: sensitive layer, not opted into
+  sens_foreign_born_share: sensitive layer, not opted into
+
+# Hard constraints the household stated. Shown as flags on the map, not silent removals:
+# an over-budget place stays visible and says why it is red.
+budget:
+  rent_ceiling_usd: 2000
+
+# Places the household named on 2026-10-15. A wishlist is not part of the universe and
+# changes no score: each pin opens a radius around a place that is already in the universe
+# and scored like every other. Radius in miles from the anchor place's centroid.
+wishlist:
+  - {id: dc,          label: "Washington DC & suburbs", anchor: "1150000", radius_mi: 30}
+  - {id: boston,      label: "Boston area",             anchor: "2507000", radius_mi: 30}
+  - {id: franklin,    label: "Franklin & Nashville",    anchor: "4727740", radius_mi: 25}
+  - {id: staugustine, label: "St. Augustine",           anchor: "1262500", radius_mi: 25}
+  - {id: sarasota,    label: "Sarasota",                anchor: "1264175", radius_mi: 25}
+
+# How many challenger regions the map surfaces: the top counties under the current
+# weights (counties that contain a town over the population floor), each shown with its
+# best town. Mirrors `engine.two_stage`.
+challengers: 8

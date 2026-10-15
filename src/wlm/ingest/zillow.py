@@ -23,8 +23,17 @@ SOURCE_ID = "zillow_research"
 STATE_COL, COUNTY_COL = "StateCodeFIPS", "MunicipalCodeFIPS"
 
 
-def _latest(row: dict[str, str], date_columns: list[str]) -> float | None:
-    for column in reversed(date_columns):
+# How far back the reader may walk from the newest month. Without a limit it walked all the
+# way to 2000: a market Zillow stopped publishing in 2019 came back with its 2019 price,
+# which is exactly the stale inheritance the docstring above rules out. A year allows for
+# a thin market's occasional gaps without presenting an old price as a current one.
+MAX_AGE_MONTHS = 12
+
+
+def _latest(
+    row: dict[str, str], date_columns: list[str], *, max_age: int = MAX_AGE_MONTHS
+) -> float | None:
+    for column in list(reversed(date_columns))[:max_age]:
         raw = (row.get(column) or "").strip()
         if raw:
             try:

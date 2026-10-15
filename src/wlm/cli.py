@@ -97,6 +97,10 @@ DOWNLOADS: dict[str, list[str]] = {
     "chr_rwjf": [
         "https://www.countyhealthrankings.org/sites/default/files/media/document/analytic_data2025.csv"
     ],
+    "usda_amenities": [
+        # 1999 vintage, structural: terrain and water area do not move. Lower 48 only.
+        "https://www.ers.usda.gov/media/6172/natural-amenities-scale-including-the-6-components-for-us-counties.xls",
+    ],
     "zillow_research": [
         # County files, not metro: they join straight to the universe with no CBSA
         # crosswalk. The metro files stay downloaded for later metro-level work.
@@ -156,6 +160,9 @@ def stage_data(args) -> int:
                 failures.append(f"{source_id}: {exc.host}")
                 print(f"  FAIL  {source_id:<18} {exc.host}", file=sys.stderr)
 
+    from wlm.ingest import api_sources
+
+    failures += api_sources.fetch_all(manifest, offline=args.offline)
     manifest.save()
 
     if failures:
@@ -244,7 +251,7 @@ def stage_features(args) -> int:
     from wlm.ingest import (
         bls_qcew, bts_intl, cdc_mortality, census_acs, census_cbp,
         bea_rpp, chr_rwjf, county_elections, dol_childcare, epa_aqs, fars,
-        fema_nri, noaa_normals, religion_census, urban_education, zillow,
+        fema_nri, noaa_normals, religion_census, urban_education, usda_amenities, zillow,
     )
     from wlm.paths import PROCESSED, RAW, UNIVERSE
 
@@ -282,6 +289,12 @@ def stage_features(args) -> int:
     hazard = fema_nri.ingest(RAW / "fema_nri" / "nri_counties.json")
     frames.append(hazard)
     print(f"  hazard     {hazard.height:>7,} rows")
+
+    nature = usda_amenities.ingest(
+        RAW / "usda_amenities" / "natural-amenities-scale-including-the-6-components-for-us-counties.xls"
+    )
+    frames.append(nature)
+    print(f"  nature     {nature.height:>7,} rows  (USDA amenities + water share, lower 48)")
 
     # --- Tier 2 ---
     acs = census_acs.build_indicators(RAW / "census_acs5", universe)

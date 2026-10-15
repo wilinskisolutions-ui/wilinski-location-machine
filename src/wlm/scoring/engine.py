@@ -32,6 +32,12 @@ EPSILON = 0.01  # floor for the geometric mean: severe but finite
 # quietly ranked against places measured twice as thoroughly.
 MIN_WEIGHT_COVERED = 0.80
 
+# The two ways `domain_scores` can find nothing at all to score. `score` stops on either
+# rather than adding a second, vaguer "no candidate could be scored" on top.
+_NO_DESIRABILITY = "no indicator produced a desirability value"
+_NOTHING_AFTER_SENSITIVE = "nothing left to score once sensitive data was excluded"
+_NOTHING_TO_SCORE = (_NO_DESIRABILITY, _NOTHING_AFTER_SENSITIVE)
+
 
 @dataclass
 class ScoreReport:
@@ -83,19 +89,25 @@ def _geometric(values: list[float], weights: list[float]) -> float | None:
     return math.exp(acc / total)
 
 
-def score(
+def domain_scores(
     features: pl.DataFrame,
     registry: dict[str, dict],
     profile: dict,
     *,
     indicator_weights: dict[str, float] | None = None,
-) -> tuple[pl.DataFrame, ScoreReport]:
-    """Score every geography in `features` against one profile."""
-    report = ScoreReport()
+    report: ScoreReport | None = None,
+) -> dict[str, dict[str, float]]:
+    """The within-domain half of `score`: geo_id -> {domain: desirability}.
+
+    Split out so a consumer that recombines domains itself — the atlas page, where the
+    household moves the domain weights live — gets exactly the numbers `score` would use,
+    rather than a second implementation of the curves and the sensitive gate. No coverage
+    floor is applied here; that belongs to the combination step.
+    """
+    report = report if report is not None else ScoreReport()
     weights = {k: v for k, v in (profile.get("domain_weights") or {}).items() if v > 0}
     if not weights:
-        report.warnings.append("profile has no positive domain weights; nothing to score")
-        return pl.DataFrame(), report
+        return {}
 
     # Prefer the profile's own within-domain weights; fall back to equal.
     if indicator_weights is None:
@@ -103,8 +115,8 @@ def score(
 
     desir = attach_desirability(features, registry, profile.get("curve_overrides"))
     if desir.is_empty():
-        report.warnings.append("no indicator produced a desirability value")
-        return pl.DataFrame(), report
+        report.warnings.append(_NO_DESIRABILITY)
+        return {}
 
     # Principle 10, enforced at the one place every ranking passes through. A sensitive
     # indicator is dropped outright unless the profile opted into it by name: the
@@ -121,11 +133,12 @@ def score(
             + ", ".join(excluded)
         )
         if desir.is_empty():
-            report.warnings.append("nothing left to score once sensitive data was excluded")
-            return pl.DataFrame(), report
+            report.warnings.append(_NOTHING_AFTER_SENSITIVE)
+            return {}
 
     # Domains carrying weight but no data cannot influence anything. Say so.
     present_domains = set(desir["domain"].unique())
+    report.domains_used = len(present_domains & set(weights))
     for domain, w in weights.items():
         if domain not in present_domains:
             report.warnings.append(
@@ -133,7 +146,7 @@ def score(
                 "it cannot affect this ranking"
             )
 
-    rows: list[dict] = []
+    out: dict[str, dict[str, float]] = {}
     for (geo_id,), group in desir.group_by(["geo_id"]):
         per_domain: dict[str, float] = {}
         for (domain,), sub in group.group_by(["domain"]):
@@ -145,14 +158,57 @@ def score(
             value = _geometric(list(sub["desirability"]), ws)
             if value is not None:
                 per_domain[domain] = value
+        if per_domain:
+            out[geo_id] = per_domain
+    return out
 
-        if not per_domain:
+
+def combine_domains(
+    per_domain: dict[str, float], weights: dict[str, float]
+) -> tuple[float, float, str] | None:
+    """The across-domain half of `score`: (score, weight covered, worst domain).
+
+    Weighted geometric mean over the weighted domains this place has data for,
+    renormalised across them (Principle 6). The coverage floor is the caller's to apply.
+    The atlas page reimplements exactly this in `score.js`, and tests/test_atlas.py holds
+    the two together.
+    """
+    weights = {k: v for k, v in weights.items() if v > 0}
+    present = {d: v for d, v in per_domain.items() if d in weights}
+    if not present or not weights:
+        return None
+    dw = [weights[d] for d in present]
+    total = _geometric(list(present.values()), dw)
+    worst = min(present, key=present.get)
+    return total, sum(dw) / sum(weights.values()), worst
+
+
+def score(
+    features: pl.DataFrame,
+    registry: dict[str, dict],
+    profile: dict,
+    *,
+    indicator_weights: dict[str, float] | None = None,
+) -> tuple[pl.DataFrame, ScoreReport]:
+    """Score every geography in `features` against one profile."""
+    report = ScoreReport()
+    weights = {k: v for k, v in (profile.get("domain_weights") or {}).items() if v > 0}
+    if not weights:
+        report.warnings.append("profile has no positive domain weights; nothing to score")
+        return pl.DataFrame(), report
+
+    per_geo = domain_scores(
+        features, registry, profile, indicator_weights=indicator_weights, report=report
+    )
+    if not per_geo and report.warnings and report.warnings[-1] in _NOTHING_TO_SCORE:
+        return pl.DataFrame(), report
+
+    rows: list[dict] = []
+    for geo_id, per_domain in per_geo.items():
+        combined = combine_domains(per_domain, weights)
+        if combined is None:
             continue
-        # Renormalise across the domains this place actually has (Principle 6).
-        dw = [weights[d] for d in per_domain]
-        total = _geometric(list(per_domain.values()), dw)
-        worst = min(per_domain, key=per_domain.get)
-        covered = sum(dw) / sum(weights.values())
+        total, covered, worst = combined
         rows.append(
             {
                 "geo_id": geo_id,
@@ -185,7 +241,6 @@ def score(
         result = result.filter(pl.col("weight_covered") >= MIN_WEIGHT_COVERED)
 
     report.places_scored = result.height
-    report.domains_used = len(present_domains & set(weights))
     return result, report
 
 
