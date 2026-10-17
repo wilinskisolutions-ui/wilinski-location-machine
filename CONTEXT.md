@@ -854,8 +854,22 @@ seeing before he re-answers.
    The sensitive layer is also 1/3 populated — partisan lean and religious adherence have no
    data — which only matters if it is ever opted into.
 
+**Published artifacts** — republish the same *file path*, passing the URL, to update in
+place rather than creating a second copy:
+
+| What | File | URL |
+|---|---|---|
+| Emil's questionnaire | `output/questionnaire-emil.html` | `https://claude.ai/artifact/NFQTWRCRpFEVJ1yD5uqTKT` |
+| Winsor's questionnaire | `output/questionnaire-winsor.html` | `https://claude.ai/artifact/GeLpVK2vxqrBqUoLyMCfQC` |
+| Practice run | `output/questionnaire-practice.html` | `https://claude.ai/artifact/4im6aFp43NrdM2gimwbiUF` |
+| Emil's ranking | `output/report-emil.html` | `https://claude.ai/artifact/GnSJrzCW1inbZafdRSrncS` |
+
+**Live reweighting lives in the atlas, not the questionnaire.** A questionnaire-side weights
+screen that re-ranked a baked-in shortlist as the points moved was built and then lost with
+a container; `make atlas` already does the same thing better, over a map, with the same
+`combine_domains` arithmetic. Rebuilding it in the questionnaire would mean two half-versions
+of one idea, so the published questionnaire pages carry no preview and the atlas is the
+answer to "what happens if I move the points".
+
 **Phase 4 is built.** Scoring, two-stage ranking, rank bands, the report and all four
-anti-bias diagnostics run end to end. `make audit` reports 10 of 10. The demonstration
-report is published at
-`https://claude.ai/code/artifact/cb7c443a-4bc9-4405-89b4-d8c0849cb4bf` — republish the same
-file path to update it in place rather than creating a second copy.
+anti-bias diagnostics run end to end. `make audit` reports 10 of 10. The earlier placeholder-weights report (`cb7c443a-…`) is superseded by the table above.
