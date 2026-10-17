@@ -108,9 +108,17 @@ h2 {{ font:600 1.42rem/1.28 var(--display); letter-spacing:-.015em; margin:0 0 1
 .card h3 {{ font:600 10px/1 var(--display); letter-spacing:.14em; text-transform:uppercase;
   color:var(--dim); margin:0 0 12px; }}
 .attr {{ display:flex; justify-content:space-between; gap:12px; align-items:baseline;
+  flex-wrap:wrap;
   padding:7px 0; border-bottom:1px solid var(--rule); font-size:.88rem; }}
 .attr:last-child {{ border-bottom:none; }}
-.attr b {{ font:500 .85rem var(--data); white-space:nowrap; }}
+/* `white-space:nowrap` was right while every value was a short number like "$227k".
+   It stopped being right when values became phrases: "very few places to eat" cannot
+   break, so the row pushed the card past the viewport, the page scrolled sideways and the
+   fixed navigation bar went out of reach on a phone. Numbers still refuse to break
+   mid-figure; phrases wrap. */
+.attr b {{ font:500 .85rem var(--data); text-align:right; min-width:0;
+  overflow-wrap:break-word; }}
+.attr span {{ min-width:0; }}
 
 .row {{ display:flex; align-items:center; gap:10px; padding:9px 0;
   border-bottom:1px solid var(--rule); }}
