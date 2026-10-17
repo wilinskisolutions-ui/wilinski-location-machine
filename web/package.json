@@ -1,0 +1,19 @@
+{
+  "name": "wilinski-atlas-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "data": "node scripts/link-data.mjs",
+    "dev": "npm run data && vite",
+    "build": "npm run data && vite build && node scripts/artifact-index.mjs",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.118.0",
+    "d3": "7.9.0"
+  },
+  "devDependencies": {
+    "vite": "8.3.4"
+  }
+}

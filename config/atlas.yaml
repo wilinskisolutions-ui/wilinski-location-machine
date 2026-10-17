@@ -64,6 +64,9 @@ factors:
     label: Church community
     blurb: Religious adherents as a share of residents (2020 US Religion Census).
     default_weight: 8
+    # The household's own opt-in. The public site offers religion as a visitor-directed
+    # sensitive layer instead (see `web.sensitive_layers`), so it is not a factor there.
+    household_only: true
     indicators: [sens_religious_adherence]
 
   - id: health
@@ -93,14 +96,14 @@ factors:
 
   - id: jobs
     label: Local jobs
-    blurb: Unemployment, industry diversity, wages. Your income is portable, so it starts at 0.
+    blurb: Unemployment, industry diversity, wages. Matters most if you need to find work there.
     default_weight: 0
     indicators: [econ_unemployment_rate, econ_median_wage, econ_industry_diversity,
                  econ_employment_growth_5y]
 
   - id: schools
     label: Schools & childcare
-    blurb: No kids planned, so it starts at 0. Graduation, staffing, spending, childcare cost.
+    blurb: Graduation, staffing, spending, childcare cost. Matters most with children, now or planned.
     default_weight: 0
     indicators: [edu_learning_rate, edu_achievement_level, edu_spend_per_pupil,
                  edu_student_teacher_ratio, edu_graduation_rate, edu_district_choice_count,
@@ -135,3 +138,68 @@ wishlist:
 # weights (counties that contain a town over the population floor), each shown with its
 # best town. Mirrors `engine.two_stage`.
 challengers: 8
+
+# ---------------------------------------------------------------- the public site (web/)
+# Decided 2026-10-17: the atlas becomes a website other households can use, with a setup
+# wizard, saved maps after sign-up, and single or couple accounts. Three things differ
+# from the household's own map, and all three are configured here so the curves stay in
+# Python and the page only recombines.
+web:
+  # Every visitor starts here; the wizard's answers adjust it (web/src/weights.js).
+  # `church` is household-only, so its points are spread across the rest. Sums to 100.
+  default_weights: {cost: 16, safety: 15, hazard: 12, climate: 12, food: 10, nature: 9,
+                    health: 9, airport: 5, community: 6, town: 6, jobs: 0, schools: 0}
+
+  # Winter presets. The wizard asks "colder, the same or warmer than where you live now"
+  # and picks the preset whose band sits nearest. Each preset re-scores the climate factor
+  # with these curves through engine.domain_scores; heating degree days are left out
+  # (`indifferent`) because the winter band already says what cold is wanted.
+  climate_presets:
+    - id: snowy
+      label: Real winters, snow welcome
+      winter: {lo: 15, hi: 30, shoulder: 10}
+      low: {lo: 5, hi: 22, shoulder: 10}
+      snow: {target: 50, tol: 35}
+    - id: cold
+      label: Cold winters
+      winter: {lo: 25, hi: 36, shoulder: 10}
+      low: {lo: 15, hi: 28, shoulder: 10}
+      snow: {target: 25, tol: 20}
+    - id: mild
+      label: Mild winters
+      winter: {lo: 34, hi: 46, shoulder: 10}
+      low: {lo: 24, hi: 36, shoulder: 10}
+      snow: {target: 6, tol: 12}
+    - id: warm
+      label: Warm winters
+      winter: {lo: 44, hi: 58, shoulder: 10}
+      low: {lo: 33, hi: 47, shoulder: 10}
+      snow: {target: 0, tol: 6}
+    - id: hot
+      label: Barely any winter
+      winter: {lo: 55, hi: 72, shoulder: 10}
+      low: {lo: 44, hi: 62, shoulder: 10}
+      snow: {target: 0, tol: 3}
+
+  # Sensitive layers (GOAL.md Principle 10). On the public site each is an opt-in slider:
+  # weight 0 and switched off until a visitor turns it on, the direction is the visitor's
+  # choice and never assumed, and no layer ever hides a place outright. The household
+  # chose to keep these for the public site on 2026-10-17, against the advice to drop
+  # them; the fair-housing review before any public launch is recorded in CONTEXT.md.
+  sensitive_layers:
+    - id: religion
+      indicator: sens_religious_adherence
+      label: Religious adherence
+      blurb: Share of residents who belong to a congregation (2020 US Religion Census).
+      directions: {higher: More adherents, lower: Fewer adherents}
+    - id: politics
+      indicator: sens_partisan_lean
+      label: Political lean
+      blurb: County two-party presidential margin, most recent election.
+      directions: {higher: Leans Republican, lower: Leans Democratic, even: Close to even}
+      even: {target: 0, tol: 0.25}
+    - id: foreign
+      indicator: sens_foreign_born_share
+      label: Residents born abroad
+      blurb: Share of the town's residents born outside the US (ACS 2019-2023).
+      directions: {higher: More, lower: Fewer}

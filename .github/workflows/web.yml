@@ -1,0 +1,86 @@
+# Build the data, test everything, build the website, and (on main, once configured)
+# deploy it. Runs on every pull request, on main, and monthly so prices stay current.
+#
+# Repository settings this uses (Settings -> Secrets and variables -> Actions):
+#   variables  VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY   public by design; RLS protects data
+#              VITE_DONATE_URL                             optional "Support" link
+#              CF_PAGES_PROJECT                            Cloudflare Pages project name
+#   secrets    CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID  only needed to deploy
+name: web
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "17 6 3 * *"   # 06:17 UTC on the 3rd: Zillow publishes mid-month
+  workflow_dispatch:
+
+concurrency:
+  group: web-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      # At job level so the deploy step's `if` can see whether it is set.
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # Raw downloads (~1 GB) are cached per month: a pull request reuses them, the
+      # monthly run starts a new month's cache and so fetches fresh files.
+      - id: month
+        run: echo "ym=$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: |
+            data/raw
+            !data/raw/MANIFEST.json
+          key: raw-${{ steps.month.outputs.ym }}
+
+      - name: Install the pipeline
+        run: pip install -e ".[pipeline]" playwright
+
+      - name: Build the data
+        run: make data universe features atlas
+
+      - name: Python tests
+        run: make validate test
+
+      - name: Database rules (row-level security on a throwaway Postgres)
+        run: web/supabase/tests/run-local.sh
+
+      - name: Build the website
+        working-directory: web
+        env:
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
+          VITE_DONATE_URL: ${{ vars.VITE_DONATE_URL }}
+        run: |
+          npm ci
+          npm test
+          npm run build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: site
+          path: web/dist
+          retention-days: 14
+
+      - name: Deploy to Cloudflare Pages
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && env.CLOUDFLARE_API_TOKEN != ''
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx --yes wrangler@3.114.0 pages deploy web/dist --project-name="${{ vars.CF_PAGES_PROJECT }}" --branch=main
