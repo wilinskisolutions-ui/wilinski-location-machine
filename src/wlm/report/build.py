@@ -167,6 +167,7 @@ class Report:
     draws: int = 0
     baseline: dict = field(default_factory=dict)
     placeholder: bool = False
+    agreement: dict = field(default_factory=dict)
 
 
 def _registry() -> dict[str, dict]:
@@ -220,6 +221,10 @@ def assemble(
         # answers. Principle 7 says the weights come from forced trade-offs; until they do,
         # the page has to say so where it cannot be skimmed past.
         placeholder="PLACEHOLDER" in profile.get("method", "").upper(),
+        # Whether the household's stated weights actually predicted their trade-off
+        # choices. It belongs on the page rather than in the profile file alone: it is the
+        # one figure that says whether the weights behind this ranking are theirs.
+        agreement=(profile.get("quality") or {}).get("agreement") or {},
     )
 
     effective = _effective_weights(registry, profile)
@@ -274,6 +279,7 @@ def assemble(
                     "rank_p95": row["rank_p95"],
                     "rank_spread": spread,
                     "coin_flip": bool(spread is not None and spread > COIN_FLIP_SPREAD),
+                    "city_unit": level == "county" and is_city_unit(row["geo_id"]),
                     "worst_domain": row["worst_domain"],
                     "worst_domain_score": row["worst_domain_score"],
                     "coverage": row["weight_covered"],
@@ -333,6 +339,24 @@ def _factor_list(items: list[dict]) -> str:
     )
 
 
+def is_city_unit(geo_id: str) -> bool:
+    """Whether a county-level row is actually a city, not a county.
+
+    Federal FIPS reserves county codes 510-840 for **independent cities** — every Virginia
+    city, plus Baltimore, St. Louis and Carson City. They are county equivalents in the
+    data and nothing else about them is county-like: Harrisonburg city covers 17 square
+    miles against a national county median of 616.
+
+    That is not a bug, and it is not wrong that they rank well — moving to Harrisonburg
+    really does get you Harrisonburg. But it is not like-for-like. A tight urban boundary
+    collects a city's restaurants, doctors and short commutes without averaging in the
+    rural surroundings a whole county carries, so a city-unit competes against counties
+    while being scored as a city. Labelled rather than excluded, so the comparison is
+    visible to whoever reads the ranking.
+    """
+    return len(geo_id) == 5 and geo_id[:2] != "02" and 510 <= int(geo_id[2:]) <= 840
+
+
 def _rows_html(ranking: Ranking) -> str:
     if not ranking.rows:
         return '<p class="empty">Nothing ranked at this level.</p>'
@@ -344,10 +368,16 @@ def _rows_html(ranking: Ranking) -> str:
             'under small changes in weights">coin flip</span>'
             if row["coin_flip"] else ""
         )
+        unit = (
+            '<span class="unit" title="An independent city: a county equivalent in the '
+            'data, but a city on the ground. It is being compared against whole counties '
+            'many times its size.">city, not a county</span>'
+            if row.get("city_unit") else ""
+        )
         out.append(f"""<article class="place">
   <div class="rk">{row["rank"]}</div>
   <div class="body">
-    <h3>{_e(row["name"])}{flip}</h3>
+    <h3>{_e(row["name"])}{unit}{flip}</h3>
     <p class="stats">
       <span><em>score</em> {row["score"]:.3f}</span>
       <span><em>band</em> {row["rank_p05"]}&ndash;{row["rank_p95"]}</span>
@@ -397,6 +427,29 @@ def render_html(report: Report) -> str:
         'not show where to live. Run <code>make questionnaire</code> first.</div>'
         if report.placeholder else ""
     )
+
+    check = report.agreement or {}
+    agreement = ""
+    if check.get("n_choices"):
+        agreement = (
+            '<div class="note"><b>Do these weights match how they actually chose?</b> '
+            f'The trade-off questions showed {check["n_choices"]} pairs of real places with '
+            'the names hidden. Scoring those same pairs with the weights above predicts '
+            f'{check["rate"]:.0%} of the choices that were actually made '
+            f'(p={check["p_value"]:.3f}). '
+            + (
+                "That is well beyond chance, so these weights describe a revealed "
+                "preference and not just a stated intention."
+                if check.get("significant")
+                else "That is not distinguishable from a coin flip. The ranking below is "
+                     "an answer to the <em>stated</em> priorities; the choices point "
+                     "somewhere else, and the gap is worth resolving before trusting any "
+                     "of it. A nearly even allocation is the usual cause — it asks for "
+                     "\u201cgood at everything\u201d, which is not what anyone actually "
+                     "wants."
+            )
+            + "</div>"
+        )
 
     return f"""<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Spectral:ital,wght@0,400;0,500;1,400&display=swap">
@@ -452,6 +505,9 @@ code {{ font:500 .88em var(--data); background:var(--paper); padding:.12em .4em;
 .place h3 {{ font:600 1.18rem/1.3 var(--display); margin:0 0 8px; letter-spacing:-.01em; }}
 .flip {{ font:600 9.5px/1 var(--display); letter-spacing:.14em; text-transform:uppercase;
   color:var(--caution); border:1px solid var(--caution); padding:.4em .6em;
+  margin-left:.9em; vertical-align:middle; white-space:nowrap; }}
+.unit {{ font:600 9.5px/1 var(--display); letter-spacing:.14em; text-transform:uppercase;
+  color:var(--dim); border:1px dashed var(--rule); padding:.4em .6em;
   margin-left:.9em; vertical-align:middle; white-space:nowrap; }}
 
 .stats {{ display:flex; flex-wrap:wrap; gap:4px 22px; margin:0 0 14px;
@@ -510,6 +566,8 @@ county level; then towns inside the counties that won.</p>
 below are wide enough to be called coin flips outright, and are marked as such.</div>
 
 {baseline}
+
+{agreement}
 
 <h2>Counties</h2>
 <p class="sub">Ranked on the full indicator set. Weights: {_e(report.basis)}.</p>

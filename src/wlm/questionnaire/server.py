@@ -107,8 +107,10 @@ button.opt:hover{border-color:var(--accent)} button.opt.sel{border-color:var(--a
 .card{border:1px solid var(--line);background:var(--card);border-radius:10px;padding:14px;cursor:pointer}
 .card:hover{border-color:var(--accent)} .card.sel{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
 .card h3{margin:0 0 10px;font-size:15px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
-.attr{display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-top:1px solid var(--line);font-size:14px}
-.attr:first-of-type{border-top:none} .attr b{font-weight:600;white-space:nowrap}
+.attr{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;padding:5px 0;border-top:1px solid var(--line);font-size:14px}
+/* Not nowrap: trade-off values are phrases now ("very few places to eat"), and a value
+   that cannot break pushed the card past a phone viewport. */
+.attr:first-of-type{border-top:none} .attr b{font-weight:600;text-align:right;min-width:0;overflow-wrap:break-word}
 .attr span{color:var(--muted);font-size:13px}
 .row{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--line)}
 .row label{flex:1;font-size:15px} .row input{width:74px;padding:7px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg);font:inherit}

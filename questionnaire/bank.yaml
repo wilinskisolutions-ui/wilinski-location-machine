@@ -80,6 +80,28 @@ sections:
         options: ["Yes", "Possibly", "No", "Prefer not to say"]
         maps_to: {kind: weight_domain, target: family_childcare, sets: relevance}
 
+      - id: q_town_size
+        text: Which of these sounds most like where you want to live?
+        help: >
+          Pick the one you would be happiest in, not the one that sounds most impressive.
+          You can be wrong about this and change it later.
+        type: choice
+        options:
+          - "A small town — around 15,000 people, everything within a few minutes"
+          - "A small city — around 80,000, a real downtown and some choice"
+          - "A mid-size city — around 250,000, most things available locally"
+          - "A big city — 500,000 and up, everything, all the time"
+          - "Somewhere between two of these / genuinely don't mind"
+        # The population is the COUNTY figure, not the town's: a 15,000-person town sits in
+        # a county of roughly 40,000, and the ranking's first stage compares counties.
+        option_values:
+          "A small town — around 15,000 people, everything within a few minutes": 40000
+          "A small city — around 80,000, a real downtown and some choice": 150000
+          "A mid-size city — around 250,000, most things available locally": 450000
+          "A big city — 500,000 and up, everything, all the time": 1200000
+          "Somewhere between two of these / genuinely don't mind": null
+        maps_to: {kind: curve_band, target: form_population, spread: 2.5}
+
       - id: q_car_free
         text: Would you want to be able to live without a car?
         type: choice
@@ -130,13 +152,18 @@ sections:
       # One question per personal-direction indicator, with the Harrisburg value filled in
       # at runtime from features.parquet.
       indicators:
+        # climate_winter_low and climate_temp_summer_mean are deliberately absent: both are
+        # retired to `scoring: false` as near-duplicates of the two kept here, and a band
+        # question for an indicator nothing scores costs a minute and changes nothing.
         - climate_temp_winter_mean
-        - climate_winter_low
-        - climate_temp_summer_mean
         - climate_summer_high
         - climate_annual_snowfall
         - climate_annual_precip
-        - form_population
+        # form_population is deliberately absent: "Harrisburg's county has 290,886 people,
+        # somewhat more or somewhat less?" asks for a five-point judgement on a quantity
+        # spanning five orders of magnitude. The first respondent answered "don't care
+        # either way", which is what an unanswerable question gets. q_town_size asks it
+        # concretely instead.
         - form_population_density
         - comm_median_age
         - comm_same_house_1yr
@@ -161,26 +188,38 @@ sections:
       # Drawn from real rows so no impossible combination is ever shown. Pairs where one
       # side wins on every attribute are rejected — they teach nothing.
       attributes:
-        - cost_home_value_median
-        - cost_rent_median_zori
-        - climate_temp_winter_mean
-        - climate_summer_high
-        - amen_food_drink_per10k
-        - amen_arts_rec_per10k
-        - air_europe_destinations
-        - air_europe_hub_distance
-        - safety_traffic_fatality_rate
-        - health_life_expectancy
-        - env_pm25_annual
-        - form_population
-        - hazard_fatality_risk_per100k
-        # Added after the audit: without these, career and community had no trade-off
-        # attributes at all, so their revealed weight was structurally zero and anything
-        # the household said about them was cut to ~35%.
-        - econ_unemployment_rate
-        - econ_industry_diversity
-        - comm_social_associations
-        - comm_median_age
+        # TEN attributes, one for each domain that has data, plus the two nature measures
+        # the household asked for. The pool used to hold seventeen, on the assumption that
+        # this block was estimating a weight per attribute.
+        #
+        # It never could. Twenty-five choices cannot identify even eight free parameters,
+        # and a design sweep over the real data confirmed that no pool size from eight to
+        # seventeen separates a coherent respondent from random answers. So the block's job
+        # changed rather than its size: it now CHECKS the household's stated weights
+        # against their choices (elicit.agreement), a test with no free parameters that
+        # twenty-five choices power comfortably.
+        #
+        # Size still matters, for a different reason: every attribute shown has to clear
+        # the contrast rule in generate.py, so a smaller pool means each question shows
+        # five differences a person can actually feel.
+        #
+        # Two are retired outright. env_pm25_annual asked the first real respondent to
+        # choose between "3.8 and 8.5 micrograms per cubic metre", and
+        # hazard_fatality_risk_per100k between "0.6 and 1.7 expected annual hazard
+        # fatalities per 100,000". Both are still measured and still scored — they simply
+        # cannot be traded off by a human, and asking anyway produced answers
+        # indistinguishable from random.
+        - cost_home_value_median        # cost_housing
+        - climate_temp_winter_mean      # climate_environment
+        - air_europe_hub_distance       # urban_form
+        - econ_unemployment_rate        # career_economy
+        - safety_traffic_fatality_rate  # safety
+        - health_life_expectancy        # health_care
+        - comm_social_associations      # community_culture
+        - amen_food_drink_per10k        # recreation_lifestyle
+        # Nature and scenery, at the household's request.
+        - env_topographic_variation     # mountains and terrain
+        - env_water_area_share          # lakes, rivers, coast
       # Education, family_childcare and the sensitive layer are deliberately absent:
       # the first two have no data yet (a weight there is reported as inapplicable rather
       # than quietly dropped), and sensitive dimensions stay opt-in only (Principle 10).

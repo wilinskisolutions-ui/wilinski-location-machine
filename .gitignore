@@ -24,10 +24,14 @@ venv/
 # questionnaire sessions are personal working state, not project history
 profiles/.sessions/
 
-# web app: dependencies, build output, and the data bundle copied in from output/atlas
-web/node_modules/
-web/dist/
-web/public/data/
-web/public/geo/
-
-web/dist-preview/
+# Completed profiles are held out of git PENDING EMIL'S EXPLICIT DECISION, not by policy.
+# They carry his real housing budget and his political and religious opt-ins — the most
+# personal things this project holds — and this repo is on GitHub. He has never been asked
+# whether he wants them versioned, so the safe default holds until he says otherwise.
+#
+# This was briefly got wrong: emil.yaml was committed in a rewritten commit (unpushed, so
+# nothing left this machine) because these lines were lost with a container and the
+# exclusion existed only as something a session remembered. It is written down now.
+# Remove these two lines the moment he says to commit them; nothing else depends on it.
+profiles/emil.yaml
+profiles/winsor.yaml

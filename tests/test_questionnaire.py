@@ -66,7 +66,7 @@ class TestNoNonsenseQuestions(unittest.TestCase):
             for q in section.get("questions", []):
                 maps = q.get("maps_to")
                 self.assertIsNotNone(maps, f"{q['id']} maps to nothing and should be cut")
-                if maps["kind"] in ("indicator", "knockout"):
+                if maps["kind"] in ("indicator", "knockout", "curve_band"):
                     self.assertIn(maps["target"], REGISTRY, q["id"])
                 elif maps["kind"] == "weight_domain" and maps["target"] != "all":
                     self.assertIn(maps["target"], domains, q["id"])
@@ -95,6 +95,79 @@ class TestGeneratedQuestions(unittest.TestCase):
             # A pair where one side wins everything teaches nothing about trade-offs.
             self.assertGreater(wins_a, 0, task["id"])
             self.assertGreater(wins_b, 0, task["id"])
+
+    def test_no_band_question_targets_a_retired_indicator(self):
+        """A band question for an indicator nothing scores costs the household a minute and
+        changes nothing. Two climate bands were in exactly that state after their
+        indicators were retired as near-duplicates."""
+        for q in [q for q in self.questions if q["type"] == "scale"]:
+            indicator = q["id"][len("band_"):]
+            entry = REGISTRY.get(indicator)
+            if entry is None:
+                continue
+            self.assertIsNot(
+                entry.get("scoring", True), False,
+                f"{q['id']} asks about {indicator}, which is scoring: false",
+            )
+
+    def test_every_shown_attribute_separates_the_two_places(self):
+        """The contrast rule, asserted rather than trusted.
+
+        The first respondent was asked to choose between "7.6 and 9.5 arts venues per
+        10,000" and between "3.8 and 8.5 micrograms of PM2.5" — differences no person can
+        hold an opinion about — and his answers duly came out looking like noise.
+        """
+        for task in [q for q in self.questions if q["type"] == "choice_pair"]:
+            for attr in task["attributes"]:
+                entry = REGISTRY[attr["indicator"]]
+                gap = abs(attr["a_pct"] - attr["b_pct"])
+                self.assertGreaterEqual(
+                    gap, generate.MIN_PERCENTILE_GAP,
+                    f"{task['id']} shows {attr['indicator']} at a {gap:.0%} gap",
+                )
+                if entry.get("phrasing") == "categorical":
+                    self.assertNotEqual(
+                        attr["a"], attr["b"],
+                        f"{task['id']} shows {attr['indicator']} as the same words twice",
+                    )
+
+    def test_no_attribute_is_shown_in_units_nobody_can_trade(self):
+        """Every trade-off attribute is either a number people have intuition about or a
+        phrase. Raw micrograms per cubic metre may not come back."""
+        for task in [q for q in self.questions if q["type"] == "choice_pair"]:
+            for attr in task["attributes"]:
+                self.assertIn(
+                    REGISTRY[attr["indicator"]].get("phrasing"), ("numeric", "categorical"),
+                    f"{attr['indicator']} is a trade-off attribute with no declared phrasing",
+                )
+
+    def test_the_tradeoff_block_reaches_every_domain_that_has_data(self):
+        """A domain with no trade-off attribute cannot be checked against the household's
+        stated weight for it — the check would silently skip whatever they said about
+        schools or jobs."""
+        spec = next(
+            sec["generated"] for sec in generate.load_bank()["sections"]
+            if (sec.get("generated") or {}).get("kind") == "discrete_choice"
+        )
+        covered = {REGISTRY[a]["domain"] for a in spec["attributes"]}
+        expected = {
+            "cost_housing", "climate_environment", "urban_form", "career_economy",
+            "safety", "health_care", "community_culture", "recreation_lifestyle",
+        }
+        self.assertEqual(expected - covered, set(), "domains with no trade-off attribute")
+
+    def test_the_town_size_question_is_concrete(self):
+        """The abstract version — "Harrisburg's county has 290,886 people, more or less?" —
+        asked for a five-point judgement on a quantity spanning five orders of magnitude,
+        and the first respondent answered "don't care either way"."""
+        q = next(q for q in self.questions if q["id"] == "q_town_size")
+        self.assertEqual(q["maps_to"]["kind"], "curve_band")
+        for option in q["options"]:
+            self.assertIn(option, q["option_values"], f"{option} maps to no population")
+        self.assertTrue(
+            any(v is None for v in q["option_values"].values()),
+            "there must be a way to say you do not mind",
+        )
 
     def test_band_questions_are_anchored_to_harrisburg(self):
         bands = [q for q in self.questions if q["type"] == "scale"]

@@ -8,6 +8,7 @@ warmth must get warm places. If they do not, something is broken and this finds 
 
 from __future__ import annotations
 
+import math
 import unittest
 
 import numpy as np
@@ -16,7 +17,13 @@ import yaml
 
 from wlm.elicit import blend, domain_weights_from_choices, fit_choices, normalize_budget
 from wlm.paths import CONFIG, PROCESSED
-from wlm.scoring.engine import ScoreReport, apply_knockouts, joint, score
+from wlm.scoring.engine import (
+    ScoreReport,
+    apply_knockouts,
+    attach_desirability,
+    joint,
+    score,
+)
 
 REGISTRY = {i["id"]: i for i in yaml.safe_load((CONFIG / "indicators.yaml").read_text())["indicators"]}
 DOMAIN_OF = {i: e["domain"] for i, e in REGISTRY.items()}
@@ -293,3 +300,86 @@ class TestPipelineRegressions(unittest.TestCase):
                              draws=3, top_n=50)
         self.assertLessEqual(result.height, 50)
         self.assertIn("rank_p95", result.columns)
+
+
+class TestWeightDecidesInfluence(unittest.TestCase):
+    """A domain's pull on the ranking must follow its weight, not its indicator count.
+
+    Found by measuring it. The final score is a weighted geometric mean of domain scores,
+    so in log space a domain's pull is `weight x spread(ln domain score)` — and that spread
+    is not something the household chose. It falls out of how many overlapping indicators
+    the domain holds: sixteen climate measures average into a smooth score that separates
+    almost nobody, while two childcare measures separate sharply. Against the first real
+    household's weights, on the real data:
+
+        domain                weight  indicators  spread   influence
+        cost_housing              12           6   0.723       8.68
+        climate_environment       12          16   0.559       6.71
+        family_childcare           8           2   0.944       7.55
+        recreation_lifestyle       8          11   0.511       4.09
+
+    Climate carried the joint-highest weight and came seventh of ten on influence, below a
+    domain carrying two-thirds of it. The household had asked for the opposite and had no
+    way to see that they had not got it.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.features = counties()
+
+    def _influence(self, weights):
+        scores, report = score(self.features, REGISTRY, {"domain_weights": weights})
+        out = {}
+        for domain in weights:
+            column = f"d_{domain}"
+            if column not in scores.columns:
+                continue
+            values = [v for v in scores[column].to_list() if v is not None]
+            if len(values) < 2:
+                continue
+            spread = float(np.std([math.log(max(v, 0.01)) for v in values]))
+            out[domain] = weights[domain] * spread * report.influence_scale.get(domain, 1.0)
+        return out
+
+    def test_influence_tracks_weight_across_every_domain(self):
+        weights = {
+            "cost_housing": 12.0, "climate_environment": 12.0, "urban_form": 12.0,
+            "career_economy": 12.0, "safety": 10.0, "health_care": 10.0,
+            "education": 8.0, "family_childcare": 8.0, "community_culture": 8.0,
+            "recreation_lifestyle": 8.0,
+        }
+        influence = self._influence(weights)
+        self.assertGreaterEqual(len(influence), 8)
+        stated = np.array([weights[d] for d in influence])
+        actual = np.array([influence[d] for d in influence])
+        self.assertGreater(
+            float(np.corrcoef(stated, actual)[0, 1]), 0.95,
+            f"weight and influence have come apart: {influence}",
+        )
+
+    def test_the_top_weighted_domain_is_not_outmuscled_by_a_lesser_one(self):
+        """The specific inversion that was happening: climate at 12 points moved the
+        ranking less than childcare at 8."""
+        weights = {"climate_environment": 12.0, "family_childcare": 8.0,
+                   "cost_housing": 12.0, "recreation_lifestyle": 8.0}
+        influence = self._influence(weights)
+        self.assertGreater(influence["climate_environment"], influence["family_childcare"])
+        self.assertGreater(influence["cost_housing"], influence["recreation_lifestyle"])
+
+
+class TestRetiredIndicatorsAreActuallyRetired(unittest.TestCase):
+    """`scoring: false` had been written on indicators and read by nothing.
+
+    `env_natural_amenities` carries a registry note saying it is excluded so the
+    household's climate preference is not counted twice — and it was being scored anyway.
+    A registry field recording an intention that nothing implements is worse than no field,
+    because it stops anyone from looking.
+    """
+
+    def test_a_retired_indicator_never_reaches_a_score(self):
+        retired = [i for i, e in REGISTRY.items() if e.get("scoring", True) is False]
+        self.assertTrue(retired, "no indicator is marked scoring: false; test is vacuous")
+        desir = attach_desirability(counties(), REGISTRY)
+        self.assertFalse(desir.is_empty())
+        leaked = sorted(set(desir["indicator_id"]) & set(retired))
+        self.assertFalse(leaked, f"retired indicators reached scoring: {leaked}")

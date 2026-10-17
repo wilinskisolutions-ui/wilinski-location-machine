@@ -32,6 +32,10 @@ EPSILON = 0.01  # floor for the geometric mean: severe but finite
 # quietly ranked against places measured twice as thoroughly.
 MIN_WEIGHT_COVERED = 0.80
 
+# How far a single domain's spread may be stretched or squeezed so that influence tracks
+# weight. See `influence_scale`.
+INFLUENCE_SCALE_LIMITS = (0.5, 2.5)
+
 # The two ways `domain_scores` can find nothing at all to score. `score` stops on either
 # rather than adding a second, vaguer "no candidate could be scored" on top.
 _NO_DESIRABILITY = "no indicator produced a desirability value"
@@ -45,6 +49,7 @@ class ScoreReport:
     domains_used: int = 0
     knockouts: list[dict] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    influence_scale: dict[str, float] = field(default_factory=dict)
 
     def render(self) -> str:
         lines = [f"scored {self.places_scored:,} candidates across {self.domains_used} domains"]
@@ -53,6 +58,11 @@ class ScoreReport:
                 f"  knockout {k['indicator']} {k['op']} {k['value']}: removed {k['removed']:,}"
                 + (f" (best removed: {k['best_removed']})" if k.get("best_removed") else "")
             )
+        for domain, k in sorted(self.influence_scale.items(), key=lambda kv: -abs(kv[1] - 1)):
+            if abs(k - 1) >= 0.1:
+                lines.append(
+                    f"  influence {'amplified' if k > 1 else 'compressed'} x{k:.2f}: {domain}"
+                )
         lines += [f"  warning: {w}" for w in self.warnings]
         return "\n".join(lines)
 
@@ -60,12 +70,19 @@ class ScoreReport:
 def attach_desirability(
     features: pl.DataFrame, registry: dict[str, dict], overrides: dict[str, dict] | None = None
 ) -> pl.DataFrame:
-    """Map every value through its preference curve, honouring elicited overrides."""
+    """Map every value through its preference curve, honouring elicited overrides.
+
+    Indicators marked `scoring: false` in the registry are dropped here. That flag had been
+    written on several indicators and read by nothing: `env_natural_amenities` carries a
+    note saying it is excluded so the household's climate preference is not counted twice,
+    and it was being scored anyway. A registry field that records an intention nothing
+    implements is worse than no field, because it stops anyone from looking.
+    """
     overrides = overrides or {}
     out = []
     for row in features.iter_rows(named=True):
         entry = registry.get(row["indicator_id"])
-        if entry is None:
+        if entry is None or entry.get("scoring", True) is False:
             continue
         override = overrides.get(row["indicator_id"]) or {}
         if override.get("indifferent"):
@@ -163,8 +180,66 @@ def domain_scores(
     return out
 
 
+def influence_scale(
+    per_place: dict[str, dict[str, float]],
+    limits: tuple[float, float] = INFLUENCE_SCALE_LIMITS,
+) -> dict[str, tuple[float, float]]:
+    """How much to stretch or squeeze each domain so weight decides influence.
+
+    Returns `{domain: (scale, centre)}`, both in log space.
+
+    **The problem, measured on the real data.** The final score is a weighted geometric mean
+    of domain scores, so in log space it is a weighted arithmetic mean and a domain's pull
+    on the ranking is `weight x spread(ln domain score)`. Spread is not something the
+    household chose — it falls out of how many overlapping indicators a domain happens to
+    hold. Sixteen climate measures (winter mean, winter low, summer mean, summer high,
+    heating and cooling degree days, precipitation, snowfall, six hazard indices...) average
+    into a smooth score that separates almost nobody, while two childcare measures separate
+    sharply. Against the first real household's weights:
+
+        domain                weight  indicators  spread   influence
+        cost_housing              12           6   0.723       8.68
+        climate_environment       12          16   0.559       6.71
+        family_childcare           8           2   0.944       7.55
+        recreation_lifestyle       8          11   0.511       4.09
+
+    Climate carried the joint-highest weight and came seventh of ten on influence, below a
+    domain carrying two-thirds of its weight. Childcare moved the ranking about 1.8x more
+    than climate. The household had asked for the opposite and had no way to see that they
+    had not got it.
+
+    **The fix.** Rescale each domain's log score to the average spread, so influence becomes
+    `weight x average spread` for every domain and therefore tracks weight. The scale is
+    clamped, because a domain where every place really does score alike should not have its
+    remaining differences — mostly noise — blown up without limit.
+
+    Anchoring on the mean keeps each domain's average where it was, so the transform
+    redistributes influence without shifting the overall scale. Retiring the redundant
+    indicators (`scoring: false` in the registry) shrinks the disparity at its source; this
+    handles what is left, including the part that is genuinely irreducible.
+    """
+    logs: dict[str, list[float]] = {}
+    for row in per_place.values():
+        for domain, value in row.items():
+            logs.setdefault(domain, []).append(math.log(max(value, EPSILON)))
+
+    spreads = {d: float(np.std(v)) for d, v in logs.items() if len(v) > 1}
+    live = [v for v in spreads.values() if v > 0]
+    if not live:
+        return {}
+    target = float(np.mean(live))
+    low, high = limits
+    out = {}
+    for domain, sd in spreads.items():
+        k = min(max(target / sd, low), high) if sd > 0 else 1.0
+        out[domain] = (k, float(np.mean(logs[domain])))
+    return out
+
+
 def combine_domains(
-    per_domain: dict[str, float], weights: dict[str, float]
+    per_domain: dict[str, float],
+    weights: dict[str, float],
+    shape: dict[str, tuple[float, float]] | None = None,
 ) -> tuple[float, float, str] | None:
     """The across-domain half of `score`: (score, weight covered, worst domain).
 
@@ -172,15 +247,31 @@ def combine_domains(
     renormalised across them (Principle 6). The coverage floor is the caller's to apply.
     The atlas page reimplements exactly this in `score.js`, and tests/test_atlas.py holds
     the two together.
+
+    `shape` is `influence_scale`'s output and stretches each domain about its own mean so
+    that influence tracks weight rather than indicator count. It changes the ranking —
+    that is its entire purpose — so a caller that omits it gets the old, unshaped
+    behaviour, and `worst domain` is always reported on the RAW score because that is the
+    interpretable 0-1 figure a household reads.
     """
     weights = {k: v for k, v in weights.items() if v > 0}
     present = {d: v for d, v in per_domain.items() if d in weights}
     if not present or not weights:
         return None
-    dw = [weights[d] for d in present]
-    total = _geometric(list(present.values()), dw)
+    # Computed in log space rather than through `_geometric`, so the EPSILON floor is
+    # applied to the RAW value once and the stretch is not then silently clipped by a
+    # second flooring of its own output. score.js does exactly this; test_atlas holds them
+    # to twelve places over random shapes.
+    num = den = 0.0
+    for domain, value in present.items():
+        w = weights[domain]
+        k, centre = (shape or {}).get(domain, (1.0, 0.0))
+        lg = math.log(max(value, EPSILON))
+        num += w * (lg if k == 1.0 else centre + k * (lg - centre))
+        den += w
+    total = math.exp(num / den)
     worst = min(present, key=present.get)
-    return total, sum(dw) / sum(weights.values()), worst
+    return total, den / sum(weights.values()), worst
 
 
 def score(
@@ -203,9 +294,14 @@ def score(
     if not per_geo and report.warnings and report.warnings[-1] in _NOTHING_TO_SCORE:
         return pl.DataFrame(), report
 
+    # Computed over the whole field, because a domain's spread cannot be known from one
+    # place. Reported so the reshaping is visible rather than silent.
+    shape = influence_scale(per_geo)
+    report.influence_scale = {d: round(k, 3) for d, (k, _) in shape.items()}
+
     rows: list[dict] = []
     for geo_id, per_domain in per_geo.items():
-        combined = combine_domains(per_domain, weights)
+        combined = combine_domains(per_domain, weights, shape)
         if combined is None:
             continue
         total, covered, worst = combined
