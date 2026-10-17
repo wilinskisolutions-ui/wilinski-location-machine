@@ -144,13 +144,30 @@ export class Model {
     return out;
   }
 
+  // engine.influence_scale, aligned with the slots: so that a factor's weight decides its
+  // pull on the ranking, exactly as in the report. The winter preset in use replaces the
+  // climate factor's stretch, and a layer carries the stretch of the direction chosen.
+  shapeVector() {
+    const web = this.core.web, pi = this.presetIndex();
+    const out = this.factors.map((f) => {
+      if (f.fi === this.climateFi && pi != null && this.presets[pi].shape) return this.presets[pi].shape;
+      return (web.shape && web.shape[f.fi]) || null;
+    });
+    this.layers.forEach((l) => {
+      const set = this.settings.layers[l.id];
+      out.push(set?.on && set.dir && l.shape ? l.shape[set.dir] || null : null);
+    });
+    return out;
+  }
+
   compute() {
     const { eps, minCov } = this.core;
     const w = this.weightVector();
+    const shape = this.shapeVector();
     const home = this.settings.home ? this.places.get(this.settings.home) : null;
     const ok = (o) => o.s && o.s.ok;
-    for (const c of this.counties.values()) { c.v = this.vector(c); c.s = A.combine(c.v, w, eps, minCov); }
-    for (const p of this.places.values()) { p.v = this.vector(p); p.s = A.combine(p.v, w, eps, minCov); }
+    for (const c of this.counties.values()) { c.v = this.vector(c); c.s = A.combine(c.v, w, eps, minCov, shape); }
+    for (const p of this.places.values()) { p.v = this.vector(p); p.s = A.combine(p.v, w, eps, minCov, shape); }
 
     const towns = [...this.places.values()].filter((p) => ok(p) && p !== home).sort((a, b) => b.s.score - a.s.score);
     for (const p of this.places.values()) p.rank = null;

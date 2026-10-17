@@ -11,6 +11,7 @@ Everything here is numpy and the standard library.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -268,6 +269,158 @@ def blend(
             + ", ".join(sorted(data_less))
         )
     return normalize_budget(combined), notes
+
+
+@dataclass
+class Agreement:
+    """How well a household's stated weights predict the choices they actually made."""
+
+    rate: float                      # share of choices the stated weights got right
+    n_choices: int
+    p_value: float                   # against a coin flip
+    misses: list[str] = field(default_factory=list)
+
+    @property
+    def is_significant(self) -> bool:
+        return self.n_choices >= 8 and self.p_value < 0.05
+
+    def render(self) -> str:
+        if not self.n_choices:
+            return "no trade-off choices to check the stated weights against"
+        verdict = (
+            "the stated weights predict the choices"
+            if self.is_significant
+            else "no better than chance — the stated weights do not predict the choices"
+        )
+        return (
+            f"stated weights agree with {self.rate:.0%} of {self.n_choices} trade-off "
+            f"choices (p={self.p_value:.3f}): {verdict}"
+        )
+
+
+def _binomial_tail(successes: int, trials: int, p: float = 0.5) -> float:
+    """One-sided P(X >= successes) for a fair coin. Exact, no scipy."""
+    if trials <= 0:
+        return 1.0
+    total = 0.0
+    for k in range(successes, trials + 1):
+        total += math.comb(trials, k) * (p**k) * ((1 - p) ** (trials - k))
+    return min(1.0, total)
+
+
+def agreement(
+    tasks: list[dict],
+    answers: dict[str, object],
+    *,
+    domain_weights: dict[str, float],
+    domain_of: dict[str, str],
+    registry: dict[str, dict],
+    curve_overrides: dict[str, dict] | None = None,
+) -> Agreement:
+    """Test the household's stated weights against their observed choices.
+
+    **This is a different question from `fit_choices`, and a far easier one to answer.**
+    Fitting weights from choices estimates one free parameter per attribute; with eight to
+    seventeen attributes over twenty-five choices, the estimate is dominated by noise. A
+    design sweep on the real data fitted a simulated respondent with three strong, coherent
+    preferences and compared them against pure random answers, at every pool size tried:
+
+        attributes   coherent (median LOO)   random (95th pct)   separation
+                 8                   0.700               0.748       -0.048
+                 9                   0.700               0.680       +0.020
+                10                   0.680               0.640       +0.040
+                17                   0.620               0.640       -0.020
+
+    Separation is zero everywhere. The estimator cannot tell a coherent respondent from a
+    coin, and no choice of attributes rescues that — the shortage is data, not design.
+
+    Checking a *stated* weight vector against the same choices has **no free parameters at
+    all**, so it is an ordinary binomial test: under the null it is a coin flip, mean 0.5
+    and standard deviation 0.10 at twenty-five choices. It also says something the household
+    can act on: *do your stated priorities actually predict how you choose?*
+
+    **On the first real respondent it says no: 54% of 24 choices, p=0.42.** His stated
+    allocation was almost flat — 12/12/12/12/10/10/8/8/8/8 — and a flat allocation does not
+    predict his choices any better than a coin. That is the finding, not a failure of the
+    test: it means the ranking built on those weights is answering a question he did not
+    mean to ask. The old behaviour was to average that disagreement away silently.
+
+    Two readings are available and the test cannot distinguish them: his choices may be
+    genuinely inconsistent, or his stated weights may not describe what he values. Which
+    one it is, is for him to decide after seeing it — and deliberately NOT for this module
+    to resolve by fitting weights to the choices, which is the thing that cannot be done at
+    this sample size.
+
+    Scoring runs through the real preference curves, so an `ideal_band` indicator is judged
+    against the band the household gave rather than assumed to be more-is-better. Weight is
+    split evenly across the indicators shown from a domain, so a domain does not gain
+    influence by appearing more often.
+    """
+    from wlm.features.curves import desirability
+
+    overrides = curve_overrides or {}
+    correct = 0
+    margins: dict[str, float] = {}
+    misses: list[str] = []
+
+    for task in tasks:
+        answer = answers.get(task["id"])
+        if answer not in ("A", "B") or task.get("repeat_of"):
+            continue
+
+        by_domain: dict[str, list[tuple[float, float]]] = {}
+        for attr in task.get("attributes", []):
+            indicator = attr["indicator"]
+            entry = registry.get(indicator)
+            domain = domain_of.get(indicator)
+            if entry is None or domain is None or domain_weights.get(domain, 0.0) <= 0:
+                continue
+            override = overrides.get(indicator) or {}
+            if override.get("indifferent"):
+                continue  # they said they do not care; do not hold them to it
+            curve = override.get("curve", entry["curve"])
+            params = override.get("curve_params", entry.get("curve_params"))
+            da = desirability(
+                curve=curve, value=attr.get("a_raw"), percentile=attr.get("a_pct"), params=params
+            )
+            db = desirability(
+                curve=curve, value=attr.get("b_raw"), percentile=attr.get("b_pct"), params=params
+            )
+            if da is None or db is None:
+                continue
+            by_domain.setdefault(domain, []).append((da, db))
+
+        if not by_domain:
+            continue
+        a_total = b_total = 0.0
+        for domain, pairs in by_domain.items():
+            share = domain_weights[domain] / len(pairs)
+            for da, db in pairs:
+                a_total += share * da
+                b_total += share * db
+
+        margin = a_total - b_total
+        if margin == 0:
+            continue  # the weights are genuinely indifferent here; they predict nothing
+        margins[task["id"]] = abs(margin)
+        if ("A" if margin > 0 else "B") == answer:
+            correct += 1
+        else:
+            misses.append(task["id"])
+
+    n = len(margins)
+    if not n:
+        return Agreement(rate=0.0, n_choices=0, p_value=1.0)
+
+    # Clearest disagreements first: a miss on a task the weights called by a wide margin
+    # says more than one they nearly tied.
+    misses.sort(key=lambda t: -margins.get(t, 0.0))
+    return Agreement(
+        rate=correct / n,
+        n_choices=n,
+        p_value=_binomial_tail(correct, n),
+        misses=misses[:5],
+    )
 
 
 def normalize_budget(allocation: dict[str, float], total: float = 100.0) -> dict[str, float]:

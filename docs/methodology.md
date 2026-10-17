@@ -99,6 +99,93 @@ carries `coverage` = share of weighted indicators actually present.
 **Weakest link.** Every row also carries `worst_domain` and its value, so a high total
 score built on one severe weakness is visible at a glance rather than buried.
 
+**Domain influence is normalized to match domain weight.** In log space the outer sum is a
+weighted arithmetic mean, so a domain's pull on the ranking is `w_d × spread(ln D_d)` — and
+that spread is not something the household chose. It falls out of how many overlapping
+indicators the domain happens to hold. Measured on the real data against the first
+household's weights:
+
+| Domain | Weight | Indicators | Spread | Influence |
+|---|---|---|---|---|
+| cost_housing | 12 | 6 | 0.723 | **8.68** |
+| climate_environment | 12 | 16 | 0.559 | **6.71** |
+| family_childcare | 8 | 2 | 0.944 | **7.55** |
+| recreation_lifestyle | 8 | 11 | 0.511 | **4.09** |
+
+Climate carried the joint-highest weight and came seventh of ten on influence, below a
+domain carrying two-thirds of it — sixteen overlapping climate measures average into a
+smooth score that separates almost nobody, while two childcare measures separate sharply.
+Nominal weight and real influence had come apart, invisibly.
+
+So `engine.influence_scale` rescales each domain's log score about its own mean to a common
+spread before the outer sum, with the factor clamped to `[0.5, 2.5]` so a domain where
+places genuinely do score alike cannot have its remaining noise blown up without limit.
+Influence then equals `w_d × (common spread)` and tracks weight (measured correlation
+0.9999 after the fix, with climate first). The factors are reported per run; the raw,
+interpretable 0–1 domain score is what appears in the report, and `worst_domain` is always
+the raw figure. The atlas page applies the same factors in `score.js`, held to the engine
+by `tests/test_atlas.py`, so moving the weights there ranks by the same rule.
+
+Redundant indicators were also retired to `scoring: false`, which shrinks the disparity at
+its source — the rescaling handles what is left.
+
+---
+
+## 4a. Where the weights come from
+
+Principle 7 says weights come from forced trade-offs, never from a rating scale. That
+remains the design; what changed is **which question the trade-offs answer.**
+
+The block shows pairs of real places with the names hidden and records which is preferred.
+The original intent was to *estimate* a weight per attribute from those choices by logistic
+regression. That is beyond what twenty-five choices can support. A design sweep on the real
+data fitted a simulated respondent with three strong, coherent preferences against pure
+random answers, at every attribute-pool size from eight to seventeen:
+
+| Attributes | Coherent respondent (median LOO) | Random (95th pct) | Separation |
+|---|---|---|---|
+| 8 | 0.700 | 0.748 | −0.048 |
+| 9 | 0.700 | 0.680 | +0.020 |
+| 10 | 0.680 | 0.640 | +0.040 |
+| 17 | 0.620 | 0.640 | −0.020 |
+
+Separation is zero everywhere. No choice of attributes rescues it — the shortage is data,
+not design, and asking enough questions to fix it would take the block past thirty-five.
+
+So the block now **checks** rather than estimates. The household states its weights
+directly, and the same choices test whether those weights predict their behaviour:
+
+```
+for each pair:  U(side) = Σ_d  w_d / n_d  ·  desirability(indicator, side)
+predicted      = the side with the higher U
+agreement      = share of choices predicted correctly
+p              = P(X ≥ correct | X ~ Binomial(n, 0.5))
+```
+
+This has **no free parameters**, so it is an ordinary binomial test: under the null it is
+exactly a coin flip, and twenty-five choices give it real power. Scoring runs through the
+household's own elicited curves, so an `ideal_band` indicator is judged against the band
+they gave rather than assumed to be more-is-better, and weight is split evenly across the
+indicators shown from a domain so a domain gains nothing by appearing more often.
+
+**On the first real respondent it returns 54% of 24 choices, p=0.42** — his almost-flat
+allocation does not predict his choices better than a coin. That is a finding about his
+weights, not a failure of the test, and it is reported on the page rather than averaged
+away. The test cannot say whether his choices are inconsistent or his stated weights are
+wrong; that is his to resolve, and deliberately not something this layer settles by fitting
+weights to the choices.
+
+*A methodological caution, recorded because it was nearly shipped as a finding:* an earlier
+run of this check reported 75% at p=0.011 for the same respondent. `choice_tasks` is seeded,
+so regenerating after the question rewrite produces `choice_7` showing a **different pair** —
+that run was comparing his answers against questions he never saw. Replayed answers are
+only meaningful against the exact question set that produced them.
+
+`fit_choices` is retained and still runs, gated on cross-validated accuracy. When it clears
+the gate its weights are blended in and its within-domain weights are used; when it does
+not, the within-domain weights come from the household's own band answers rather than from
+a rejected fit — the gate used to apply to one output of the fit and not the other.
+
 ---
 
 ## 5. Knockouts

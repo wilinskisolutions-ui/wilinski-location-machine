@@ -50,18 +50,29 @@ class TestPageScoresMatchTheEngine(unittest.TestCase):
             if rng.random() < 0.1 and per:
                 per[next(iter(per))] = 0.0  # below the epsilon floor
             weights = {d: rng.choice([0, 0, 1, 4, 8, 12, 16, 30]) for d in domains}
-            cases.append((per, weights))
+            # The influence reshaping changes the ranking, so the page has to apply it
+            # identically or moving the weights there ranks by a different rule than the
+            # report. Identity pairs are included so the unshaped path stays covered.
+            shape = {
+                d: (rng.choice([1.0, 1.0, 0.5, 0.78, 1.4, 2.5]), rng.uniform(-2.5, -0.1))
+                for d in domains
+            }
+            cases.append((per, weights, shape))
 
         payload = [
-            {"f": [per.get(d) for d in domains], "w": [weights[d] for d in domains]}
-            for per, weights in cases
+            {
+                "f": [per.get(d) for d in domains],
+                "w": [weights[d] for d in domains],
+                "s": [list(shape[d]) for d in domains],
+            }
+            for per, weights, shape in cases
         ]
         got = run_node(
-            f"(xs)=>xs.map(x=>A.combine(x.f,x.w,{EPSILON},{MIN_WEIGHT_COVERED}))", payload
+            f"(xs)=>xs.map(x=>A.combine(x.f,x.w,{EPSILON},{MIN_WEIGHT_COVERED},x.s))", payload
         )
         compared = 0
-        for (per, weights), js in zip(cases, got):
-            ref = combine_domains(per, weights)
+        for (per, weights, shape), js in zip(cases, got):
+            ref = combine_domains(per, weights, shape)
             if ref is None:
                 self.assertIsNone(js)
                 continue
@@ -210,6 +221,39 @@ class TestPublicSite(unittest.TestCase):
         town = sv[("place", "4727740")]        # Franklin TN
         self.assertIsNone(town[0])
         self.assertTrue(0 <= town[4] <= 1)
+
+
+class TestPublicSiteRanksByTheReportsRule(unittest.TestCase):
+    """The site's winter presets and layer directions are each stretched like a factor."""
+
+    CORE = Path(build.OUT) / "data" / "core.json"
+
+    @unittest.skipUnless((Path(build.OUT) / "data" / "core.json").exists(), "atlas not built")
+    def test_every_variant_carries_a_stretch_within_the_engines_limits(self):
+        from wlm.scoring.engine import INFLUENCE_SCALE_LIMITS
+
+        low, high = INFLUENCE_SCALE_LIMITS
+        core = json.loads(self.CORE.read_text())
+        web = core["web"]
+        for f, shape in zip(core["factors"], web["shape"]):
+            if f["householdOnly"]:
+                self.assertIsNone(shape, f"{f['id']} is not offered publicly")
+            elif shape is not None:
+                self.assertTrue(low <= shape[0] <= high, f["id"])
+        for preset in web["climatePresets"]:
+            self.assertIsNotNone(preset["shape"], preset["id"])
+            self.assertTrue(low <= preset["shape"][0] <= high, preset["id"])
+        for layer in web["layers"]:
+            self.assertEqual(set(layer["shape"]), set(layer["directions"]), layer["id"])
+            for direction, shape in layer["shape"].items():
+                self.assertTrue(low <= shape[0] <= high, f"{layer['id']}:{direction}")
+
+    def test_an_explicit_target_changes_nothing_when_it_is_the_default(self):
+        from wlm.scoring.engine import influence_scale, influence_target
+
+        rng = random.Random(11)
+        rows = {i: {"a": rng.random(), "b": rng.random() ** 4} for i in range(300)}
+        self.assertEqual(influence_scale(rows), influence_scale(rows, target=influence_target(rows)))
 
 
 class TestRents(unittest.TestCase):

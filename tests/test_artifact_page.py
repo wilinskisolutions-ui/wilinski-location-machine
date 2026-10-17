@@ -106,6 +106,44 @@ class TestQuestionnaireOnAPhone(unittest.TestCase):
             )
         )
 
+    def test_no_generated_screen_scrolls_sideways(self):
+        """A broad sweep: the landing screen fitting proves nothing about the rest.
+
+        Not the regression guard for the phrase-overflow bug — that is
+        `TestLongestPhrasesStillFit`, because whether a *generated* pair overflows depends
+        on which combination the seeded generator happens to produce, and a guard that only
+        fails for some seeds is not a guard.
+        """
+        width = "document.documentElement.clientWidth"
+        checked = 0
+        for _ in range(len(self.questions) + 2):
+            if self.page.query_selector(".done"):
+                break
+            overflow = self.page.evaluate(
+                "() => { const w = document.documentElement.clientWidth;"
+                " return [...document.querySelectorAll('#app *')]"
+                "  .filter(e => e.getBoundingClientRect().right > w + 1)"
+                "  .map(e => e.tagName + '.' + e.className).slice(0, 3); }"
+            )
+            label = self.page.inner_text("#app h2") if self.page.query_selector("#app h2") else "?"
+            self.assertEqual(overflow, [], f"screen {checked + 1} ({label[:40]}) overflows")
+            self.assertTrue(
+                self.page.evaluate(f"document.documentElement.scrollWidth <= {width}"),
+                f"screen {checked + 1} ({label[:40]}) scrolls sideways",
+            )
+            # The nav is fixed and must stay clickable, which is how the bug actually bit.
+            self.assertTrue(self.page.evaluate(
+                "() => { const r = document.querySelector('#skip').getBoundingClientRect();"
+                " const e = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);"
+                " return !!e && (e.id === 'skip' || e.closest('#skip') !== null); }"
+            ), f"screen {checked + 1} ({label[:40]}) put the Skip button out of reach")
+            checked += 1
+            if not self.page.query_selector("#skip"):
+                break
+            self.page.click("#skip")
+            self.page.wait_for_timeout(30)
+        self.assertGreater(checked, 40, "walked too few screens to be meaningful")
+
     def test_trade_off_cards_stack_rather_than_squeezing_side_by_side(self):
         self.assertTrue(self._advance_to(".pair"), "no trade-off question reached")
         cards = self.page.query_selector_all(".pair .card")
@@ -220,3 +258,110 @@ class TestQuestionnaireOnAPhone(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(sync_playwright, "playwright unavailable")
+class TestLongestPhrasesStillFit(unittest.TestCase):
+    """A trade-off value must never push the card past a phone viewport.
+
+    Trade-off values used to be short numbers like "$227k", so `.attr b` was
+    `white-space:nowrap`. Once they became phrases, a value that cannot break pushed the
+    row past the viewport: the card overflowed, the page scrolled sideways, and the fixed
+    navigation bar went out of reach — which on a phone means the questionnaire cannot be
+    answered at all.
+
+    The test asserts the **layout property**, not today's wording. Measured on the real
+    ladders the overflow is marginal — a handful of pixels, and the current phrasing
+    happens to fit — so a test built from the registry's longest entry passes whether the
+    fix is present or not, and would be no guard at all. It therefore includes a
+    deliberately long value alongside the registry's worst case: anyone rewording a ladder
+    or adding a longer one is covered by the same assertion, and the fix cannot be
+    reverted silently.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        from wlm.questionnaire import artifact
+        from wlm.questionnaire.generate import load_registry
+
+        registry = load_registry()
+        worst = sorted(
+            (
+                (e.get("question_label") or e["label"], max(e["phrases"], key=len))
+                for e in registry.values()
+                if e.get("phrasing") == "categorical" and e.get("phrases")
+            ),
+            key=lambda pair: -(len(pair[0]) + len(pair[1])),
+        )
+        assert worst, "no phrase ladders in the registry; this test would be vacuous"
+        # Headroom: a plausible future ladder entry, longer than anything written so far.
+        worst.insert(0, ("Clubs and community life", "a remarkably active community indeed"))
+        cls.worst = worst
+
+        question = {
+            "id": "choice_worst",
+            "type": "choice_pair",
+            "text": "Which would you rather live in?",
+            "section": {"id": "tradeoffs", "title": "Trade-offs"},
+            "attributes": [
+                {"indicator": f"i{n}", "label": label, "a": phrase, "b": phrase,
+                 "a_raw": 1.0, "b_raw": 2.0, "a_pct": 0.1, "b_pct": 0.9}
+                for n, (label, phrase) in enumerate(worst)
+            ],
+            "options": ["A", "B", "Genuinely can't choose"],
+            "maps_to": {"kind": "weight_domain", "target": "all", "sets": "weights"},
+        }
+        cls.tmp = Path(tempfile.mkdtemp())
+        cls.page_path = artifact.write_page("practice", out_dir=cls.tmp, questions=[question])
+
+        class Quiet(http.server.SimpleHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+        handler = functools.partial(Quiet, directory=str(cls.tmp))
+        cls.httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        cls.port = cls.httpd.server_address[1]
+        threading.Thread(target=cls.httpd.serve_forever, daemon=True).start()
+        cls.pw = sync_playwright().start()
+        cls.browser = cls.pw.chromium.launch(executable_path=_chromium())
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.browser.close()
+        cls.pw.stop()
+        cls.httpd.shutdown()
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def setUp(self):
+        self.page = self.browser.new_page(viewport=PHONE, is_mobile=True, has_touch=True)
+        self.page.goto(f"http://127.0.0.1:{self.port}/{self.page_path.name}")
+        self.page.wait_for_selector(".pair", timeout=15_000)
+
+    def tearDown(self):
+        self.page.close()
+
+    def test_a_long_value_does_not_overflow_the_card(self):
+        overflowing = self.page.evaluate(
+            "() => { const w = document.documentElement.clientWidth;"
+            " return [...document.querySelectorAll('#app *')]"
+            "  .filter(e => e.getBoundingClientRect().right > w + 1)"
+            "  .map(e => (e.textContent || '').slice(0, 48)).slice(0, 4); }"
+        )
+        self.assertEqual(
+            overflowing, [],
+            "a long trade-off value overflows a phone viewport; the longest real ladder "
+            f"entry is {self.worst[1]!r}",
+        )
+
+    def test_the_page_does_not_scroll_sideways(self):
+        self.assertTrue(self.page.evaluate(
+            "document.documentElement.scrollWidth <= document.documentElement.clientWidth"
+        ))
+
+    def test_the_navigation_stays_reachable(self):
+        """How the bug actually bit: the fixed nav ended up under the overflowing card."""
+        self.assertTrue(self.page.evaluate(
+            "() => { const r = document.querySelector('#skip').getBoundingClientRect();"
+            " const e = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);"
+            " return !!e && (e.id === 'skip' || e.closest('#skip') !== null); }"
+        ))

@@ -23,20 +23,38 @@ SCALE_COLUMNS = ("NATURAL AMENITIES SCALE", "SCALE", "AMENITY_SCALE", "NAT_AMEN_
 
 # The ERS workbook (`.xls`) carries ~100 rows of notes above a two-line header, so columns
 # are taken by position — verified against the header row on 2026-10-15:
-#   col 0 "FIPS Code", col 12 "Percent Water area", col 20 "Natural amenity Scale".
-XLS_HEADER_ROW = 104
-XLS_COLUMNS = {"FIPS": 0, "WATER PERCENT": 12, "SCALE": 20}
+#   col 0 "FIPS Code", col 11 "topography code", col 12 "Percent Water area",
+#   col 20 "Natural amenity Scale".
+XLS_COLUMNS = {"FIPS": 0, "TOPOGRAPHY": 11, "WATER PERCENT": 12, "SCALE": 20}
+
+# The header sat at row 104 when this was written, and the row number was hardcoded. It is
+# now searched for instead: a hardcoded row breaks the moment ERS adds or removes a line of
+# notes, and the whole point of the preamble is that it is prose someone edits.
+FIPS_HEADER = "fips code"
+HEADER_SEARCH_ROWS = 400
+
+
+def _header_row(sheet) -> int:
+    for row in range(min(sheet.nrows, HEADER_SEARCH_ROWS)):
+        if str(sheet.cell_value(row, 0)).strip().lower() == FIPS_HEADER:
+            return row
+    raise ValueError(
+        f"{SOURCE_ID}: no '{FIPS_HEADER}' header in the first {HEADER_SEARCH_ROWS} rows"
+    )
 
 
 def _read_xls(path: Path) -> list[dict[str, str]]:
     import xlrd
 
     sheet = xlrd.open_workbook(str(path)).sheet_by_index(0)
-    header = [str(c.value).strip().upper() for c in sheet.row(XLS_HEADER_ROW)]
-    if header[0] != "FIPS CODE" or header[20] != "SCALE" or header[12] != "WATER AREA":
-        raise ValueError(f"{path.name}: header moved, got {header[0]!r}/{header[12]!r}/{header[20]!r}")
+    start = _header_row(sheet)
+    header = [str(c.value).strip().upper() for c in sheet.row(start)]
+    expected = {11: "TOPOGRAPHY CODE", 12: "WATER AREA", 20: "SCALE"}
+    moved = {i: header[i] for i, want in expected.items() if header[i] != want}
+    if moved:
+        raise ValueError(f"{path.name}: header moved, got {moved}")
     rows = []
-    for r in range(XLS_HEADER_ROW + 1, sheet.nrows):
+    for r in range(start + 1, sheet.nrows):
         cells = sheet.row(r)
         rows.append({k: str(cells[i].value).strip() for k, i in XLS_COLUMNS.items()})
     return rows
@@ -85,7 +103,17 @@ def ingest(path: Path, *, vintage: str = "1999") -> pl.DataFrame:
                     "geo_level": "county",
                     "geo_id": geoid,
                     "indicator_id": "env_water_area_share",
+                    # Published as a percentage; the registry declares this a share.
                     "value": None if water is None else water / 100.0,
+                }
+            )
+        if "TOPOGRAPHY" in row:
+            records.append(
+                {
+                    "geo_level": "county",
+                    "geo_id": geoid,
+                    "indicator_id": "env_topographic_variation",
+                    "value": _number(row.get("TOPOGRAPHY")),
                 }
             )
 

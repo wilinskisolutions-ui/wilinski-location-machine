@@ -93,9 +93,10 @@
 
   function computeScores() {
     const { eps, minCov } = S.core;
+    const shape = S.core.shape;
     const home = S.core.home;
-    for (const c of S.counties.values()) c.s = A.combine(c.f, S.weights, eps, minCov);
-    for (const p of S.places.values()) p.s = A.combine(p.f, S.weights, eps, minCov);
+    for (const c of S.counties.values()) c.s = A.combine(c.f, S.weights, eps, minCov, shape);
+    for (const p of S.places.values()) p.s = A.combine(p.f, S.weights, eps, minCov, shape);
     const ok = (o) => o.s && o.s.ok;
     const towns = [...S.places.values()].filter((p) => ok(p) && p.id !== home.place).sort((a, b) => b.s.score - a.s.score);
     towns.forEach((p, i) => { p.rank = i + 1; });
