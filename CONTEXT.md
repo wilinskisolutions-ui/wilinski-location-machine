@@ -739,6 +739,91 @@ extra — it drives real Chromium through Playwright, and skips itself when eith
 
 ---
 
+### 2026-10-17 — Questions a person can answer, and weights that bite
+
+Emil read his ranking and said three things: it looks the same every time, the questions
+are strange ("you're asking me to choose between different concentrations of a gas in the
+air"), and he is not sure the weather part worked. All three were correct, and each was
+measured before anything was changed.
+
+**1. Two trade-off attributes were genuinely unanswerable, and the generator had no
+contrast rule at all.** It drew two random places and displayed whatever fell out, so he
+was asked to choose between "3.8 and 8.5 micrograms per cubic metre" and "7.6 against 9.5
+arts venues per 10,000". Fixed: indicators now declare `phrasing`, ten carry a phrase
+ladder keyed to national percentile, and every shown attribute must separate the two places
+by at least 25 percentile points and two phrase rungs. One rung produced "on a big lake or
+the coast" against "substantial water" — technically different, reads the same. The pool is
+cut from seventeen to ten; `env_pm25_annual` and `hazard_fatality_risk_per100k` are retired
+from elicitation and still measured and scored.
+
+**2. The trade-off block could never have estimated weights, at any pool size.** It fits
+one free parameter per attribute from twenty-five choices. A design sweep over the real data
+fitted a simulated respondent with three strong, coherent preferences against pure random
+answers, at every pool size from eight to seventeen:
+
+| Attributes | Coherent (median LOO) | Random (95th pct) | Separation |
+|---|---|---|---|
+| 8 | 0.700 | 0.748 | −0.048 |
+| 9 | 0.700 | 0.680 | +0.020 |
+| 10 | 0.680 | 0.640 | +0.040 |
+| 17 | 0.620 | 0.640 | −0.020 |
+
+Separation is zero everywhere. So `elicit.agreement` now **checks** his stated weights
+against his choices instead: no free parameters, an ordinary binomial test, real power at
+n=25. **On his actual answers it returns 54% of 24 choices, p=0.42** — his almost-flat
+allocation does not predict his choices better than a coin. That is a finding about the
+weights, now printed on the page instead of averaged away in silence.
+
+*Recorded because it was nearly shipped as a finding:* an earlier run of this check
+reported 75% at p=0.011 for him. `choice_tasks` is seeded, so regenerating after the
+question rewrite produces `choice_7` showing a **different pair** — that run compared his
+answers against questions he never saw. Replayed answers are only meaningful against the
+exact question set that produced them, which is also why his twenty-five choice answers
+were dropped rather than carried forward.
+
+**3. Weight and influence had come apart, inverted.** A domain's pull on the ranking is
+`weight × spread(log domain score)`, and that spread falls out of indicator count rather
+than anything the household chose. Climate carried the joint-highest weight across sixteen
+overlapping measures and came **seventh of ten** on influence, below family_childcare at
+eight points across two. Fixed with `engine.influence_scale` plus eight redundant
+indicators retired; influence now tracks weight at r=0.9999 with climate first. `score.js`
+applies the same factors so the atlas page ranks by the same rule.
+
+**4. `scoring: false` was read by nothing.** Found while doing (3).
+`env_natural_amenities` carried a registry note saying it was excluded so his climate
+preference would not be counted twice — and it was being scored anyway. Now enforced in
+`attach_desirability`, the one place every ranking passes through.
+
+**5. The USDA reader hardcoded its header row** (104) in a file whose first hundred rows
+are prose someone edits. It searches for the header now, and also reads column 11, which
+gives `env_topographic_variation` — the mountains-and-scenery half of the "nature, beauty"
+Emil asked for, alongside the water share. Spot-checked: Sierra Nevada and Mogollon
+counties at 21, Mississippi Delta counties at 1, Nantucket and San Francisco Bay at 75%
+water.
+
+**6. A concrete town-size question** replaces "Harrisburg's county has 290,886 people,
+somewhat more or somewhat less?" — a five-point scale against a quantity spanning five
+orders of magnitude, which he answered "don't care either way".
+
+**Also:** Virginia independent cities labelled in the report as city-units, since
+Harrisonburg competes at 17 square miles against counties with a national median of 616 ·
+band floors clamped to the indicator's physical minimum ("much less snow" was producing a
+band starting at −19 inches) · `openpyxl` added to the pipeline extra, which `src` imports
+in three places and a fresh clone could not run without.
+
+**Lost and rebuilt.** A container reclaim took the whole working tree before any of this
+was committed, along with 707MB of source data and Emil's uploaded answers. The data was
+re-downloaded from `MANIFEST.json`, the code rewritten onto the restructured engine the
+atlas branch left behind, and his answers reconstructed from the conversation. The lesson
+is cheap to apply: **commit each coherent piece as soon as it is written**, not after
+verification.
+
+**Open, and Emil's call:** his housing ceiling of $450k removes 283 counties and the
+three-hour airport limit removes **1,403** — nearly half the country, pointing hard at the
+mid-Atlantic. Both are real preferences, not bugs, but the size of the second is worth
+seeing before he re-answers.
+
+
 ## Next actions
 
 0. **Use the atlas together** — `https://claude.ai/artifact/Y4oyTiP8Xoa6LNQdDaoQeU`. Set the
@@ -746,7 +831,12 @@ extra — it drives real Chromium through Playwright, and skips itself when eith
    challenger. Rebuild with `make atlas` and republish `output/atlas/index.html` after any data
    or config change. Tell us the real winter-temperature band to replace the placeholder.
 
-1. **Emil practises, then both answer.** Two routes, same 56 questions:
+0. **Emil re-answers the trade-off block — 35 questions, not the whole thing.** His 21
+   still-valid answers are carried forward onto the rebuilt question set. The 25 choice
+   answers were **dropped, not reused**: `choice_tasks` is seeded, so `choice_7` still
+   exists but now shows a different pair, and reusing the old answer scores one question
+   against another (see the 2026-10-17 entry — that mistake produced a spurious 75%).
+1. **Then both answer in full.** Two routes, same questions:
    * **Phone** — one published artifact per person, plus a practice page. Answers stay
      separate because the pages are separate.
    * **Laptop** — `make questionnaire PERSON=practice`, then `PERSON=emil`, then
