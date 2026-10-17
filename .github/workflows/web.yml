@@ -53,6 +53,10 @@ jobs:
       - name: Install the pipeline
         run: pip install -e ".[pipeline]" playwright
 
+      # The phone-layout tests launch Playwright's own Chromium when no system copy exists.
+      - name: Install Chromium for the browser tests
+        run: python -m playwright install --with-deps chromium
+
       - name: Build the data
         run: make data universe features atlas
 
