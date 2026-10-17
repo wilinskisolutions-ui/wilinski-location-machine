@@ -152,9 +152,10 @@ sections:
       # One question per personal-direction indicator, with the Harrisburg value filled in
       # at runtime from features.parquet.
       indicators:
+        # climate_winter_low and climate_temp_summer_mean are deliberately absent: both are
+        # retired to `scoring: false` as near-duplicates of the two kept here, and a band
+        # question for an indicator nothing scores costs a minute and changes nothing.
         - climate_temp_winter_mean
-        - climate_winter_low
-        - climate_temp_summer_mean
         - climate_summer_high
         - climate_annual_snowfall
         - climate_annual_precip
