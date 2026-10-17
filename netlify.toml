@@ -1,0 +1,14 @@
+# Netlify must not build this repository itself.
+#
+# The site needs the data pipeline first (about a gigabyte of downloads, then Python),
+# which runs in GitHub Actions (.github/workflows/web.yml); that workflow tests everything
+# and deploys the finished site with the Netlify CLI. Left to its own devices, a
+# git-connected Netlify site publishes the repository exactly as it is, which has no
+# index.html at the root, and replaces the live site with "Page not found". That
+# happened on 2026-10-17 when the repository was connected.
+#
+# `ignore` exiting 0 cancels every git-triggered Netlify build, so the published deploy
+# stays whatever the workflow (or a manual upload) last put there.
+[build]
+  ignore = "exit 0"
+  publish = "web/dist"

@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#050912">
+<meta name="description" content="Score every US county and town against what matters to you, put the places you already like next to the ones the data says you should see, and plan your visits.">
+<title>Wilinski Atlas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oxanium:wght@500;600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<script type="module" src="/src/main.js"></script>
+</head>
+<body>
+<div class="app" id="app">
+  <header class="bar">
+    <div class="brand"><b>WILINSKI <i>ATLAS</i></b><span>where to live, by the evidence</span></div>
+    <div class="search" role="search">
+      <input id="search" type="search" placeholder="Find a town or county" autocomplete="off" aria-label="Find a town or county" aria-controls="search-results">
+      <ul id="search-results" hidden></ul>
+    </div>
+    <div class="sync" id="sync" role="status"></div>
+    <div class="account" id="account"></div>
+  </header>
+
+  <nav class="mtabs" aria-label="Panels">
+    <button type="button" data-m="places" aria-pressed="true">Places</button>
+    <button type="button" data-m="detail" aria-pressed="false">Details</button>
+    <button type="button" data-m="weights" aria-pressed="false">Weights</button>
+  </nav>
+
+  <aside class="pane left" id="pane-left">
+    <nav class="tabs" aria-label="Left panel">
+      <button type="button" data-tab="places" aria-pressed="true">Places</button>
+      <button type="button" data-tab="weights" aria-pressed="false">Weights</button>
+    </nav>
+    <div class="pane-inner" id="tab-places"></div>
+    <div class="pane-inner" id="tab-weights" hidden></div>
+  </aside>
+
+  <main class="scope" id="scope">
+    <svg id="map" role="img" aria-label="Map of US counties shaded by fit, with your picked areas and the machine's challengers"></svg>
+    <div class="hud tl" id="hud-mode">Continental US</div>
+    <div class="hud tr">
+      <button type="button" class="btn" id="btn-us" hidden>All US</button>
+      <div class="seg" role="group" aria-label="Color towns by">
+        <button type="button" data-color="fit" aria-pressed="true">Fit</button>
+        <button type="button" data-color="rent" aria-pressed="false">Price</button>
+      </div>
+      <div class="seg" role="group" aria-label="ZIP price layer">
+        <button type="button" id="btn-zips" aria-pressed="false">ZIP prices</button>
+      </div>
+    </div>
+    <div class="hud bl" id="legend"></div>
+    <div class="hud br num" id="coords"></div>
+    <div class="tip" id="tip" hidden></div>
+    <div class="loading" id="loading">Loading 9,885 places…</div>
+  </main>
+
+  <aside class="pane right" id="pane-right">
+    <div class="pane-inner" id="readout"></div>
+  </aside>
+</div>
+<div class="wizard" id="wizard" hidden></div>
+<div class="modal" id="modal" hidden></div>
+</body>
+</html>

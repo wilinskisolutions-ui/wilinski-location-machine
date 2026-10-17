@@ -1,0 +1,87 @@
+# Build the data, test everything, build the website, and (on main, once configured)
+# deploy it to Netlify. Runs on every pull request, on main, and monthly so prices stay
+# current. The Supabase URL and anon key come from web/.env.production (public by design).
+#
+# Repository settings this uses (Settings -> Secrets and variables -> Actions):
+#   secrets    NETLIFY_AUTH_TOKEN   Netlify -> User settings -> Applications -> New access token
+#   variables  NETLIFY_SITE_ID      Netlify -> your site -> Site configuration -> Site ID
+#              VITE_DONATE_URL      optional "Support" link (a Stripe Payment Link)
+name: web
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "17 6 3 * *"   # 06:17 UTC on the 3rd: Zillow publishes mid-month
+  workflow_dispatch:
+
+concurrency:
+  group: web-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      # At job level so the deploy step's `if` can see whether it is set.
+      NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # Raw downloads (~1 GB) are cached per month: a pull request reuses them, the
+      # monthly run starts a new month's cache and so fetches fresh files.
+      - id: month
+        run: echo "ym=$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: |
+            data/raw
+            !data/raw/MANIFEST.json
+          key: raw-${{ steps.month.outputs.ym }}
+
+      - name: Install the pipeline
+        run: pip install -e ".[pipeline]" playwright
+
+      # The phone-layout tests launch Playwright's own Chromium when no system copy exists.
+      - name: Install Chromium for the browser tests
+        run: python -m playwright install --with-deps chromium
+
+      - name: Build the data
+        run: make data universe features atlas
+
+      - name: Python tests
+        run: make validate test
+
+      - name: Database rules (row-level security on a throwaway Postgres)
+        run: web/supabase/tests/run-local.sh
+
+      - name: Build the website
+        working-directory: web
+        # Only pass the donate link when it is set: an empty variable would override
+        # the value in .env files with an empty string.
+        run: |
+          if [ -n "${{ vars.VITE_DONATE_URL }}" ]; then export VITE_DONATE_URL="${{ vars.VITE_DONATE_URL }}"; fi
+          npm ci
+          npm test
+          npm run build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: site
+          path: web/dist
+          retention-days: 14
+
+      - name: Deploy to Netlify
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && env.NETLIFY_AUTH_TOKEN != ''
+        run: npx --yes netlify-cli@27.10.2 deploy --prod --dir web/dist --site "${{ vars.NETLIFY_SITE_ID }}" --message "${{ github.sha }}"

@@ -145,6 +145,88 @@ def factor_scores(
     return county_f, place_f, report.warnings
 
 
+# ---------------------------------------------------------------- the public site
+
+PRESET_CURVES = {
+    "winter": ("climate_temp_winter_mean", "ideal_band"),
+    "low": ("climate_winter_low", "ideal_band"),
+    "snow": ("climate_annual_snowfall", "ideal_point"),
+}
+
+
+def check_web(cfg: dict, registry: dict[str, dict]) -> None:
+    """The public-site section must agree with the factors and the registry."""
+    web = cfg.get("web") or {}
+    expected = {f["id"] for f in cfg["factors"] if not f.get("household_only")}
+    weights = web.get("default_weights") or {}
+    if set(weights) != expected:
+        raise AtlasError(f"web.default_weights must name exactly {sorted(expected)}, got {sorted(weights)}")
+    if sum(weights.values()) != 100:
+        raise AtlasError(f"web.default_weights sum to {sum(weights.values())}, not 100")
+    for layer in web.get("sensitive_layers") or []:
+        entry = registry.get(layer["indicator"])
+        if not entry or not entry.get("sensitive"):
+            raise AtlasError(f"layer '{layer['id']}' must point at a sensitive indicator")
+        if "even" in layer["directions"] and "even" not in layer:
+            raise AtlasError(f"layer '{layer['id']}' offers 'even' without a target")
+    for preset in web.get("climate_presets") or []:
+        for key, (ind, _) in PRESET_CURVES.items():
+            if key not in preset:
+                raise AtlasError(f"climate preset '{preset['id']}' has no '{key}' curve")
+            if registry[ind]["curve"] not in ("ideal_band", "ideal_point"):
+                raise AtlasError(f"{ind} is no longer a band curve; the presets would mean nothing")
+
+
+def climate_preset_scores(
+    features: pl.DataFrame, cfg: dict, registry: dict[str, dict]
+) -> dict[str, list[float | None]]:
+    """county -> the climate factor under each winter preset, in config order.
+
+    Every climate indicator is county-level, so a town's climate is its county's: places
+    need no pass of their own. Each preset is a curve override handed to the engine, the
+    same way a household's elicited band would be.
+    """
+    from wlm.scoring.engine import domain_scores
+
+    presets = (cfg.get("web") or {}).get("climate_presets") or []
+    regrouped, _ = factor_profile(cfg, registry)
+    climate = {i: e for i, e in regrouped.items() if e["domain"] == "climate"}
+    counties = features.filter(
+        (pl.col("geo_level") == "county") & pl.col("indicator_id").is_in(list(climate))
+    )
+    out: dict[str, list[float | None]] = defaultdict(lambda: [None] * len(presets))
+    for k, preset in enumerate(presets):
+        overrides = {
+            ind: {"curve": curve, "curve_params": preset[key]}
+            for key, (ind, curve) in PRESET_CURVES.items()
+        }
+        overrides["climate_heating_degree_days"] = {"indifferent": True}
+        profile = {"domain_weights": {"climate": 1.0}, "curve_overrides": overrides}
+        for gid, per in domain_scores(counties, climate, profile).items():
+            out[gid][k] = per.get("climate")
+    return out
+
+
+def sensitive_values(features: pl.DataFrame, cfg: dict) -> dict[tuple[str, str], list]:
+    """(level, geo) -> [percentile, raw] per sensitive layer, flattened in config order.
+
+    The page applies the visitor's chosen direction: higher is the percentile, lower is
+    its complement (the engine's own monotone curves), and "even" is the engine's
+    ideal_point on the raw value. Nothing here assumes a direction.
+    """
+    layers = (cfg.get("web") or {}).get("sensitive_layers") or []
+    index = {layer["indicator"]: k for k, layer in enumerate(layers)}
+    out: dict[tuple[str, str], list] = {}
+    rows = features.filter(pl.col("indicator_id").is_in(list(index))).select(
+        ["geo_level", "geo_id", "indicator_id", "value", "percentile"]
+    )
+    for level, gid, ind, val, pct in rows.iter_rows():
+        row = out.setdefault((level, gid), [None] * (2 * len(layers)))
+        k = index[ind]
+        row[2 * k], row[2 * k + 1] = pct, val
+    return out
+
+
 # ---------------------------------------------------------------- ZIP rents and prices
 
 
@@ -296,6 +378,102 @@ def _shape(cfg: dict, county_f: dict, place_f: dict) -> list[list[float]]:
     ]
 
 
+def web_shapes(
+    cfg: dict,
+    registry: dict[str, dict],
+    county_f: dict,
+    place_f: dict,
+    place_county: dict[str, str],
+    climate_cp: dict,
+    sens: dict,
+) -> dict:
+    """`influence_scale` for the public site, so it ranks by the same rule as the report.
+
+    The site offers the public factors (not the household-only ones), lets a visitor swap
+    the climate factor for a winter preset, and adds sensitive layers in a direction they
+    choose. Each preset and each direction is a different distribution, so each gets its
+    own stretch, all against ONE target: the spread of the public factor set. Values are
+    measured as the page sees them, counties and towns together, a town carrying its
+    county's figure for a county-level measure.
+    """
+    from wlm.features.curves import ideal_point
+    from wlm.scoring.engine import influence_scale, influence_target
+
+    web = cfg.get("web") or {}
+    public = {f["id"] for f in cfg["factors"] if not f.get("household_only")}
+    rows = {("c", g): {d: v for d, v in r.items() if d in public} for g, r in county_f.items()}
+    rows.update({("p", g): {d: v for d, v in r.items() if d in public} for g, r in place_f.items()})
+    target = influence_target(rows)
+    base = influence_scale(rows, target=target) if target else {}
+
+    def pair(sc):
+        return [_r(sc[0], 6), _r(sc[1], 6)] if sc else None
+
+    def one(values) -> list | None:
+        vals = {i: {"x": v} for i, v in enumerate(values) if v is not None}
+        return pair(influence_scale(vals, target=target).get("x")) if target and vals else None
+
+    presets = []
+    for i, _ in enumerate(web.get("climate_presets") or []):
+        county_vals = {g: v[i] for g, v in climate_cp.items() if v[i] is not None}
+        presets.append(one(list(county_vals.values())
+                           + [county_vals.get(c) for c in place_county.values()]))
+
+    layers = []
+    for k, layer in enumerate(web.get("sensitive_layers") or []):
+        county_level = registry[layer["indicator"]]["geo_level"] == "county"
+        pts = []  # (percentile, raw) as the page reads them for every county and town
+        for (level, gid), row in sens.items():
+            if county_level and level == "county":
+                pts.append((row[2 * k], row[2 * k + 1]))
+        if county_level:
+            by_county = {gid: (row[2 * k], row[2 * k + 1]) for (lvl, gid), row in sens.items() if lvl == "county"}
+            pts += [by_county[c] for c in place_county.values() if c in by_county]
+        else:
+            pts += [(row[2 * k], row[2 * k + 1]) for (lvl, _), row in sens.items() if lvl == "place"]
+        shapes = {}
+        for direction in layer["directions"]:
+            if direction == "higher":
+                shapes[direction] = one([p for p, _ in pts])
+            elif direction == "lower":
+                shapes[direction] = one([None if p is None else 1 - p for p, _ in pts])
+            elif direction == "even" and layer.get("even"):
+                e = layer["even"]
+                shapes[direction] = one([None if r is None else ideal_point(r, target=e["target"], tol=e["tol"]) for _, r in pts])
+        layers.append(shapes)
+
+    return {
+        "factors": [pair(base.get(f["id"])) if f["id"] in public else None for f in cfg["factors"]],
+        "presets": presets,
+        "layers": layers,
+    }
+
+
+def _web_meta(cfg: dict, registry: dict[str, dict], shapes: dict | None = None) -> dict:
+    web = cfg.get("web") or {}
+    shapes = shapes or {"factors": [], "presets": [], "layers": []}
+    presets = web.get("climate_presets") or []
+    layers = web.get("sensitive_layers") or []
+    return {
+        "defaultWeights": web.get("default_weights") or {},
+        # influence_scale for the public factor set, one [k, centre] per factor in factor
+        # order (null for a household-only factor); presets and layers carry their own.
+        "shape": shapes["factors"],
+        "climatePresets": [
+            {"id": p["id"], "label": p["label"], "winter": [p["winter"]["lo"], p["winter"]["hi"]],
+             "shape": shapes["presets"][i] if i < len(shapes["presets"]) else None}
+            for i, p in enumerate(presets)
+        ],
+        "layers": [
+            {**{k: layer[k] for k in ("id", "indicator", "label", "blurb", "directions")},
+             "even": layer.get("even"), "level": registry[layer["indicator"]]["geo_level"],
+             "unit": registry[layer["indicator"]].get("unit"),
+             "shape": shapes["layers"][i] if i < len(shapes["layers"]) else {}}
+            for i, layer in enumerate(layers)
+        ],
+    }
+
+
 def build_core(
     cfg: dict,
     registry: dict[str, dict],
@@ -306,8 +484,15 @@ def build_core(
     rents: dict,
     homes: dict,
     months: dict[str, str],
+    climate_cp: dict | None = None,
+    sens: dict | None = None,
+    shapes: dict | None = None,
 ) -> dict:
     factors = [f["id"] for f in cfg["factors"]]
+    climate_cp, sens = climate_cp or {}, sens or {}
+
+    def rvec(values) -> list | None:
+        return [_r(v, 4) for v in values] if values else None
     placed = factor_of(cfg, registry)
 
     def fvec(scores: dict[str, float] | None) -> list:
@@ -333,7 +518,9 @@ def build_core(
         loc = [_r(row["lat"], 7), _r(row["lon"], 7), row["population"]]
         if lvl == "county":
             counties.append(base + loc + [fvec(county_f.get(gid)),
-                                          [_r(vals.get(i)) for i in present["county"]]])
+                                          [_r(vals.get(i)) for i in present["county"]],
+                                          [_r(v, 3) for v in climate_cp[gid]] if gid in climate_cp else None,
+                                          rvec(sens.get(("county", gid)))])
         else:
             rent, rent_share = rents.get(gid, (None, None))
             home, home_share = homes.get(gid, (None, None))
@@ -341,6 +528,7 @@ def build_core(
                 fvec(place_f.get(gid)),
                 [_r(vals.get(i)) for i in present["place"]],
                 _r(rent), _r(rent_share, 2), _r(home), _r(home_share, 2),
+                rvec(sens.get(("place", gid))),
             ])
 
     from wlm.baseline import BASELINE_COUNTY, BASELINE_LABEL, BASELINE_PLACE
@@ -363,7 +551,12 @@ def build_core(
         # score.js exactly as engine.combine_domains does, so moving the weights here
         # ranks by the same rule as the report.
         "shape": _shape(cfg, county_f, place_f),
-        "factors": [{k: f[k] for k in ("id", "label", "blurb", "default_weight")} for f in cfg["factors"]],
+        "factors": [
+            {**{k: f[k] for k in ("id", "label", "blurb", "default_weight")},
+             "householdOnly": bool(f.get("household_only"))}
+            for f in cfg["factors"]
+        ],
+        "web": _web_meta(cfg, registry, shapes),
         "inds": inds,
         "sources": _sources(),
         "zillowMonth": months,
@@ -372,13 +565,13 @@ def build_core(
         "wishlist": cfg.get("wishlist") or [],
         "challengers": cfg.get("challengers", 8),
         "counties": {
-            "cols": ["id", "name", "st", "lat", "lon", "pop", "f", "raw"],
+            "cols": ["id", "name", "st", "lat", "lon", "pop", "f", "raw", "climatePresets", "sens"],
             "raw": present["county"],
             "rows": counties,
         },
         "places": {
             "cols": ["id", "name", "st", "county", "lat", "lon", "pop", "f", "raw",
-                     "rent", "rentShare", "home", "homeShare"],
+                     "rent", "rentShare", "home", "homeShare", "sens"],
             "raw": present["place"],
             "rows": places,
         },
@@ -421,8 +614,14 @@ def main(argv: list[str] | None = None) -> int:
     universe = pl.read_parquet(UNIVERSE)
     features = pl.read_parquet(FEATURES)
 
+    check_web(cfg, reg)
     county_f, place_f, warnings = factor_scores(features, universe, cfg, reg)
     print(f"  factor scores  {len(county_f):,} counties, {len(place_f):,} places")
+    climate_cp = climate_preset_scores(features, cfg, reg)
+    sens = sensitive_values(features, cfg)
+    print(f"  web extras     {len(climate_cp):,} counties x "
+          f"{len(cfg['web']['climate_presets'])} climate presets, "
+          f"{len(sens):,} geographies with sensitive layers")
     for w in warnings:
         print(f"    warning: {w}")
 
@@ -446,8 +645,13 @@ def main(argv: list[str] | None = None) -> int:
     if OUT.exists():
         shutil.rmtree(OUT)
     (OUT / "data").mkdir(parents=True)
+    place_county = {
+        g: c for g, c in universe.filter(pl.col("geo_level") == "place")
+        .select(["geo_id", "county_geoid"]).iter_rows() if c
+    }
+    shapes = web_shapes(cfg, reg, county_f, place_f, place_county, climate_cp, sens)
     core = build_core(cfg, reg, universe, features, county_f, place_f, rents, homes,
-                      {"rent": zori_month, "home": zhvi_month})
+                      {"rent": zori_month, "home": zhvi_month}, climate_cp, sens, shapes)
     (OUT / "data" / "core.json").write_text(json.dumps(core, separators=(",", ":")))
     print(f"  core.json      {(OUT / 'data' / 'core.json').stat().st_size / 1e6:.1f} MB")
 

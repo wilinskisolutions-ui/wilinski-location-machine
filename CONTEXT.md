@@ -5,7 +5,7 @@
 > is the project's working memory: a session that reads it should be able to resume cold
 > without re-deriving anything or re-asking a settled question.
 
-**Current phase:** Phase 4 complete; **Phase 5/6 tooling started — the atlas.** An interactive
+**Current phase:** Phase 4 complete; atlas built; **the website (web/) built, accounts ready to switch on.** An interactive
 map (`make atlas`, published at `https://claude.ai/artifact/Y4oyTiP8Xoa6LNQdDaoQeU`) puts the
 household's own wishlist next to the machine's live challengers, every town scored the same way
 under joint weights the couple set together on the map. All 10 GOAL.md principles pass;
@@ -13,7 +13,7 @@ under joint weights the couple set together on the map. All 10 GOAL.md principle
 the four API sources it used to skip.
 **Still open:** Winsor's questionnaire answers, and `profiles/emil.yaml` is not in the repo (it
 was never committed; Emil's budget split survives only in the 2026-08-23 entry below).
-**Last updated:** 2026-10-15
+**Last updated:** 2026-10-17
 
 ---
 
@@ -668,6 +668,102 @@ Winsor needs access to the claude.ai organization to open it.
 
 ---
 
+### 2026-10-17 — The atlas becomes a website for other households
+
+The household's partner asked for it: "make this into a workable website that people can
+make an account to, put in their preferences and explore." Decided by multiple choice:
+
+| Question | Answer |
+|---|---|
+| What is it | **Donation-funded hobby** for now; a payment wall only if costs grow |
+| Account wall | **After the wizard**: anyone can set up and see their map; sign up to save it |
+| Accounts | **Single or couple**: a couple shares one map and one set of weights, each with their own login |
+| Sensitive layers | **Keep as opt-in sliders**, against the advice to drop them for the public |
+| Supabase | The household's own account, for sign-in and saved maps |
+
+**GOAL.md amended** (anti-goals): "not a product for anyone else" removed. Old: a
+general-purpose database *or a product for anyone else*. New: not a general-purpose
+database. Reason: the household chose to offer it. Every principle still applies to each
+visitor: their universe is the same fixed one, their weights come from a 100-point budget,
+sensitive layers are off until they turn them on.
+
+**What was built (branch `claude/atlas-web`, stacked on the atlas PR):**
+- `web/`: a Vite app. Seven-step wizard (who, home town, money, life, winters, weights
+  with opt-in sensitive layers, top picks); the map from the atlas, now driven by each
+  visitor's settings; saved to the browser until sign-up, then to Supabase.
+- Scoring stays the engine's. `config/atlas.yaml` gains a `web` section: public starting
+  weights, five **winter presets** re-scored through `engine.domain_scores` (the wizard
+  asks "colder, same or warmer than where you live now"), and three **sensitive layers**
+  whose direction the visitor picks: higher is the engine's percentile, lower its
+  complement, "close to even" the engine's `ideal_point` on the raw margin
+  (`score.js idealPoint`, held to `curves.ideal_point` by test).
+- The household's own `church` factor is marked `household_only` and is not offered.
+- `web/supabase/migrations/0001_init.sql`: households (one or two members), settings,
+  pins, notes, one-time invites; row-level security on every table; functions for
+  creating a map, inviting and joining a partner, deleting an account.
+- `.github/workflows/web.yml`: builds the data, runs every test, builds the site, and
+  deploys to Cloudflare Pages on `main` once the secrets exist; monthly for fresh prices.
+
+**Verified, not assumed:**
+- The RLS migration ran on a throwaway Postgres 16 as four people (`make test-db`):
+  a stranger sees nothing and cannot write, an invite works once, a full couple takes
+  nobody else, a partner keeps the map when the other deletes their account. Mutation
+  check: with the pins policy opened to everyone, the run fails at the stranger check.
+- The wizard-to-map flow, driven in Chromium at desktop and phone sizes: pins and notes
+  survive a reload, moving a weight re-ranks the challengers, no console errors, no
+  sideways scroll.
+- Found and fixed on the way: a hidden modal swallowing every click (the artifact
+  wrapper had been supplying the `[hidden]` rule); one partner's account deletion would
+  have cascaded away the couple's shared map; a member could rewrite `created_by`;
+  `roundTo100` returning 96 for inputs not already summing to 100; two climate steps
+  mapping to the same preset; factor descriptions written for this household only.
+
+**Not yet verified:** a live Supabase project (needs the household's project URL and
+anon key), Google sign-in, and realtime sync between two phones.
+
+**Standing risks, recorded so they are decided once:**
+- Fair housing: steering by religion or national origin is illegal; the layers are opt-in,
+  visitor-directed and never hide a place. A fair-housing lawyer's read is required before
+  the site is opened beyond friends and family.
+- Zillow's terms: recorded as non-commercial with attribution; verify before any payment
+  wall. HUD Small Area FMRs are the public-domain fallback.
+- Focus: Wilinski Solutions is in its advertising phase. The household's time on this is
+  review only.
+
+**2026-10-17, later: the migration failed on the real Supabase project.** The household
+ran it and reported "doesn't work"; a read-only probe with the anon key showed none of
+the six tables existed. Cause, reproduced locally once the test stub was made to behave
+like Supabase: invite tokens used `gen_random_bytes`, which lives in Supabase's separate
+`extensions` schema, so the one-transaction script failed at line 80 and created nothing.
+The bare-Postgres stub had hidden it. Fixed by using the built-in `gen_random_uuid()`.
+The stricter stub also exposed a second problem the old one could not see: Supabase grants
+every new table to `anon` and `authenticated`, so the column-level grant on `households`
+did nothing there; privileges are now revoked first and granted back one by one. The
+script is idempotent (safe to re-run after a failure) and the harness applies it twice.
+Mutation check: dropping the revoke makes the run fail.
+
+Also learned: Supabase's built-in email only delivers to the project's team members, at
+about 2 an hour, so strangers cannot sign up until a custom SMTP sender is configured; the
+site now says so in plain words. Google sign-in is off in the project, so its button is
+hidden until it is switched on (read live from the project's public settings).
+
+Hosting: the household chose **Netlify**. The workflow deploys there with the Netlify CLI;
+the project URL and anon key live in `web/.env.production` (public by design). A race was
+fixed where the wizard closed before the new map was drawn (the browser test caught it
+once accounts were configured). The artifact preview is now its own build: a classic
+script, no account code.
+
+**Merged with main's "weights that bite" change (`engine.influence_scale`).** The website
+must rank by the same rule as the report, so it applies the same stretch, computed in
+`atlas.build.web_shapes` for what only the site has: the public factor set (no
+household-only factor), each winter preset, and each sensitive-layer direction. All are
+held to ONE target, the public factor set's mean log spread, via a new optional `target`
+argument to `influence_scale` (default behaviour unchanged, tested). "More" and "fewer"
+foreign-born share get identical stretches: percentiles are uniform, so p and 1-p have
+the same spread. That is arithmetic, not a bug.
+
+---
+
 ## Data inventory
 
 Nothing ingested yet — Phase 0 built no pipeline by design. `docs/data-sources.md` holds
@@ -825,6 +921,11 @@ seeing before he re-answers.
 
 
 ## Next actions
+
+00. **Switch on accounts** (project `dvcqgoligcixiegyhnol`, keys already in the repo):
+    re-run the fixed `web/supabase/migrations/0001_init.sql` in the SQL editor, deploy to
+    Netlify, put the Netlify address in Supabase's URL Configuration, and set up a custom
+    SMTP sender before inviting anyone outside the Supabase team. Steps in `web/README.md`.
 
 0. **Use the atlas together** — `https://claude.ai/artifact/Y4oyTiP8Xoa6LNQdDaoQeU`. Set the
    joint weights first (the Weights tab), then plan visits: for every two wishlist areas, one

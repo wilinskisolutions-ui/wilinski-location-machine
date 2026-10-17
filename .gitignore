@@ -35,3 +35,11 @@ profiles/.sessions/
 # Remove these two lines the moment he says to commit them; nothing else depends on it.
 profiles/emil.yaml
 profiles/winsor.yaml
+
+# web app: dependencies, build output, and the data bundle copied in from output/atlas
+web/node_modules/
+web/dist/
+web/public/data/
+web/public/geo/
+
+web/dist-preview/

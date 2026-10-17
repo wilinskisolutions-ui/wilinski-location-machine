@@ -72,7 +72,15 @@
     return pts;
   }
 
-  const api = { combine: combine, fmt: fmt, decodeRing: decodeRing };
+  /* wlm.features.curves.ideal_point: Gaussian falloff around `target`. Used only for a
+     sensitive layer's "close to even" direction, where the raw value is the point. */
+  function idealPoint(value, target, tol) {
+    if (value === null || value === undefined) return null;
+    const v = Math.exp(-(((value - target) / tol) ** 2));
+    return v < 0 ? 0 : v > 1 ? 1 : v;
+  }
+
+  const api = { combine: combine, fmt: fmt, decodeRing: decodeRing, idealPoint: idealPoint };
   root.AtlasScore = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof window !== "undefined" ? window : globalThis);

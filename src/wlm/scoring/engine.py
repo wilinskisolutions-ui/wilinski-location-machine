@@ -183,6 +183,7 @@ def domain_scores(
 def influence_scale(
     per_place: dict[str, dict[str, float]],
     limits: tuple[float, float] = INFLUENCE_SCALE_LIMITS,
+    target: float | None = None,
 ) -> dict[str, tuple[float, float]]:
     """How much to stretch or squeeze each domain so weight decides influence.
 
@@ -224,16 +225,31 @@ def influence_scale(
             logs.setdefault(domain, []).append(math.log(max(value, EPSILON)))
 
     spreads = {d: float(np.std(v)) for d, v in logs.items() if len(v) > 1}
-    live = [v for v in spreads.values() if v > 0]
-    if not live:
-        return {}
-    target = float(np.mean(live))
+    if target is None:
+        # `target` is passed in only when a domain is scaled on its own against a spread
+        # measured elsewhere: the public site's winter presets and sensitive-layer
+        # directions are alternatives to one domain, so each is held to the target of the
+        # factor set it sits in (influence_target), not to its own spread.
+        target = influence_target(per_place)
+        if target is None:
+            return {}
     low, high = limits
     out = {}
     for domain, sd in spreads.items():
         k = min(max(target / sd, low), high) if sd > 0 else 1.0
         out[domain] = (k, float(np.mean(logs[domain])))
     return out
+
+
+def influence_target(per_place: dict[str, dict[str, float]]) -> float | None:
+    """The common spread `influence_scale` stretches every domain to: the mean of their
+    log-score spreads. None when no domain varies at all."""
+    logs: dict[str, list[float]] = {}
+    for row in per_place.values():
+        for domain, value in row.items():
+            logs.setdefault(domain, []).append(math.log(max(value, EPSILON)))
+    live = [s for s in (float(np.std(v)) for v in logs.values() if len(v) > 1) if s > 0]
+    return float(np.mean(live)) if live else None
 
 
 def combine_domains(
