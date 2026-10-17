@@ -69,9 +69,14 @@ current. It needs, in GitHub → Settings → Secrets and variables → Actions:
 | Variable | `NETLIFY_SITE_ID` | Netlify → your site → Site configuration → Site ID |
 | Variable | `VITE_DONATE_URL` | optional: a Stripe Payment Link for the Support button |
 
-Don't connect the repository to Netlify's own build: building the data needs about a
-gigabyte of downloads, which the GitHub workflow caches and Netlify's builder would not.
-`public/_headers` sets caching and a Content-Security-Policy for Netlify.
+Netlify never builds this repository itself: `netlify.toml` at the repo root cancels
+its git-triggered builds. Building the data needs about a gigabyte of downloads, which the
+GitHub workflow caches and Netlify's builder would not, and without that file a connected
+repository gets published as-is, with no index.html at its root ("Page not found").
+`public/_headers` sets caching and a Content-Security-Policy.
+
+If the live site ever shows "Page not found": Netlify → Deploys → open the last good
+deploy (a manual upload or a "Deployed by GitHub Actions" one) → **Publish deploy**.
 
 ## Tests
 
