@@ -50,6 +50,8 @@ select test.expect_count('select * from public.invites', 0);
 select test.expect_error(format($$insert into public.pins (household_id, id, label, anchor, radius_mi) values (%L, 'x', 'x', '4727740', 10)$$, :'hid_a'), 'row-level security');
 select test.expect_error(format($$insert into public.household_members (household_id, user_id) values (%L, auth.uid())$$, :'hid_a'), 'permission denied');
 select test.expect_error(format($$select public.create_invite(%L)$$, :'hid_a'), 'not_a_member');
+select test.expect_error(format($$insert into public.invites (household_id) values (%L)$$, :'hid_a'), 'permission denied');
+select test.expect_error($$select public.pins_limit()$$, 'permission denied|trigger functions');
 -- Updates and deletes against A's rows silently touch nothing under RLS; prove A's data survived below.
 update public.town_notes set note = 'hijacked' where household_id = :'hid_a';
 delete from public.pins where household_id = :'hid_a';

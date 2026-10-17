@@ -730,6 +730,29 @@ anon key), Google sign-in, and realtime sync between two phones.
 - Focus: Wilinski Solutions is in its advertising phase. The household's time on this is
   review only.
 
+**2026-10-17, later: the migration failed on the real Supabase project.** The household
+ran it and reported "doesn't work"; a read-only probe with the anon key showed none of
+the six tables existed. Cause, reproduced locally once the test stub was made to behave
+like Supabase: invite tokens used `gen_random_bytes`, which lives in Supabase's separate
+`extensions` schema, so the one-transaction script failed at line 80 and created nothing.
+The bare-Postgres stub had hidden it. Fixed by using the built-in `gen_random_uuid()`.
+The stricter stub also exposed a second problem the old one could not see: Supabase grants
+every new table to `anon` and `authenticated`, so the column-level grant on `households`
+did nothing there; privileges are now revoked first and granted back one by one. The
+script is idempotent (safe to re-run after a failure) and the harness applies it twice.
+Mutation check: dropping the revoke makes the run fail.
+
+Also learned: Supabase's built-in email only delivers to the project's team members, at
+about 2 an hour, so strangers cannot sign up until a custom SMTP sender is configured; the
+site now says so in plain words. Google sign-in is off in the project, so its button is
+hidden until it is switched on (read live from the project's public settings).
+
+Hosting: the household chose **Netlify**. The workflow deploys there with the Netlify CLI;
+the project URL and anon key live in `web/.env.production` (public by design). A race was
+fixed where the wizard closed before the new map was drawn (the browser test caught it
+once accounts were configured). The artifact preview is now its own build: a classic
+script, no account code.
+
 ---
 
 ## Data inventory
@@ -805,10 +828,10 @@ extra — it drives real Chromium through Playwright, and skips itself when eith
 
 ## Next actions
 
-00. **Switch on accounts:** create the Supabase project, run
-    `web/supabase/migrations/0001_init.sql`, send the project URL and anon key (never the
-    service_role key). Steps in `web/README.md`. Then pick a domain and connect Cloudflare
-    Pages, and share with 10-20 people before anyone else.
+00. **Switch on accounts** (project `dvcqgoligcixiegyhnol`, keys already in the repo):
+    re-run the fixed `web/supabase/migrations/0001_init.sql` in the SQL editor, deploy to
+    Netlify, put the Netlify address in Supabase's URL Configuration, and set up a custom
+    SMTP sender before inviting anyone outside the Supabase team. Steps in `web/README.md`.
 
 0. **Use the atlas together** — `https://claude.ai/artifact/Y4oyTiP8Xoa6LNQdDaoQeU`. Set the
    joint weights first (the Weights tab), then plan visits: for every two wishlist areas, one

@@ -11,5 +11,7 @@ trap '"$bin/pg_ctl" -D "$tmp/data" stop -m immediate >/dev/null 2>&1 || true; rm
 "$bin/pg_ctl" -D "$tmp/data" -o "-k $tmp -c listen_addresses=''" -l "$tmp/log" start >/dev/null
 psql=("$bin/psql" -h "$tmp" -U postgres -d postgres -v ON_ERROR_STOP=1 -q)
 "${psql[@]}" -f "$here/auth_stub.sql"
+# Twice: the SQL editor is where people retry after an error, so a second run must succeed.
+"${psql[@]}" -f "$here/../migrations/0001_init.sql"
 "${psql[@]}" -f "$here/../migrations/0001_init.sql"
 "${psql[@]}" -f "$here/rls.sql"

@@ -1,6 +1,8 @@
 -- Wilinski Atlas: accounts, households and saved maps.
 --
--- Run once in the Supabase SQL editor (or `supabase db push`). Safe to read top to bottom:
+-- Paste the whole file into Supabase -> SQL Editor -> New query, and press Run. If
+-- Supabase warns about a "destructive operation", choose "Run this query": the only
+-- deletes in this file are inside the delete-my-account function. Safe to run again.
 --
 --   households          one map: a single person, or a couple sharing one
 --   household_members   who belongs to which household (at most two people)
@@ -16,12 +18,14 @@
 -- Stored on purpose: settings, pins, notes. Not stored: names, addresses, or any label
 -- for a sensitive answer. A sensitive layer is kept only as the weight and direction the
 -- person chose, inside settings.
-
-create extension if not exists pgcrypto;
+--
+-- Written for Supabase's defaults: no extension is needed (extensions live in their own
+-- schema there), and because Supabase grants every new table to anon and authenticated,
+-- privileges are revoked first and then granted back one by one.
 
 -- ---------------------------------------------------------------- tables
 
-create table public.households (
+create table if not exists public.households (
   id          uuid primary key default gen_random_uuid(),
   mode        text not null default 'single' check (mode in ('single', 'couple')),
   -- set null, not cascade: when the person who made a couple's map deletes their
@@ -30,16 +34,16 @@ create table public.households (
   created_at  timestamptz not null default now()
 );
 
-create table public.household_members (
+create table if not exists public.household_members (
   household_id uuid not null references public.households (id) on delete cascade,
   user_id      uuid not null references auth.users (id) on delete cascade,
   joined_at    timestamptz not null default now(),
   primary key (household_id, user_id)
 );
 -- One map per person: joining a partner's map means leaving your own first.
-create unique index household_members_one_per_user on public.household_members (user_id);
+create unique index if not exists household_members_one_per_user on public.household_members (user_id);
 
-create table public.household_settings (
+create table if not exists public.household_settings (
   household_id uuid primary key references public.households (id) on delete cascade,
   settings     jsonb not null,
   updated_at   timestamptz not null default now(),
@@ -48,7 +52,7 @@ create table public.household_settings (
   constraint settings_is_small check (pg_column_size(settings) < 32768)
 );
 
-create table public.pins (
+create table if not exists public.pins (
   household_id uuid not null references public.households (id) on delete cascade,
   id           text not null check (char_length(id) between 1 and 80),
   label        text not null check (char_length(label) between 1 and 120),
@@ -59,7 +63,7 @@ create table public.pins (
   primary key (household_id, id)
 );
 
-create table public.town_notes (
+create table if not exists public.town_notes (
   household_id uuid not null references public.households (id) on delete cascade,
   place_geoid  text not null check (place_geoid ~ '^[0-9]{7}$'),
   status       text check (status in ('want', 'visited', 'favorite', 'ruled-out')),
@@ -69,10 +73,13 @@ create table public.town_notes (
   primary key (household_id, place_geoid)
 );
 
-create table public.invites (
-  token        text primary key default encode(gen_random_bytes(18), 'hex'),
+create table if not exists public.invites (
+  -- Two random UUIDs, dashes removed: 64 hex characters from Postgres's built-in
+  -- generator, so no extension is needed.
+  token        text primary key
+               default replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', ''),
   household_id uuid not null references public.households (id) on delete cascade,
-  created_by   uuid not null references auth.users (id) on delete cascade,
+  created_by   uuid references auth.users (id) on delete cascade,
   created_at   timestamptz not null default now(),
   expires_at   timestamptz not null default now() + interval '7 days',
   used_by      uuid references auth.users (id) on delete set null,
@@ -80,17 +87,21 @@ create table public.invites (
 );
 
 -- Pins per household are few by design; cap them so one account cannot fill the database.
-create function public.pins_limit() returns trigger language plpgsql as $$
+create or replace function public.pins_limit() returns trigger language plpgsql as $$
 begin
   if (select count(*) from public.pins where household_id = new.household_id) >= 25 then
     raise exception 'pin_limit' using hint = 'A map holds at most 25 pinned areas.';
   end if;
   return new;
 end $$;
+drop trigger if exists pins_limit on public.pins;
 create trigger pins_limit before insert on public.pins for each row execute function public.pins_limit();
 
-create function public.touch_updated_at() returns trigger language plpgsql as $$
+create or replace function public.touch_updated_at() returns trigger language plpgsql as $$
 begin new.updated_at := now(); return new; end $$;
+drop trigger if exists touch on public.household_settings;
+drop trigger if exists touch on public.pins;
+drop trigger if exists touch on public.town_notes;
 create trigger touch before update on public.household_settings for each row execute function public.touch_updated_at();
 create trigger touch before update on public.pins for each row execute function public.touch_updated_at();
 create trigger touch before update on public.town_notes for each row execute function public.touch_updated_at();
@@ -99,7 +110,7 @@ create trigger touch before update on public.town_notes for each row execute fun
 
 -- SECURITY DEFINER so policies can ask "is this person a member?" without the policy on
 -- household_members recursing into itself.
-create function public.is_member(hid uuid) returns boolean
+create or replace function public.is_member(hid uuid) returns boolean
 language sql stable security definer set search_path = public as $$
   select exists (
     select 1 from public.household_members m
@@ -115,6 +126,14 @@ alter table public.household_settings enable row level security;
 alter table public.pins enable row level security;
 alter table public.town_notes enable row level security;
 alter table public.invites enable row level security;
+
+drop policy if exists households_read on public.households;
+drop policy if exists households_update on public.households;
+drop policy if exists members_read on public.household_members;
+drop policy if exists settings_all on public.household_settings;
+drop policy if exists pins_all on public.pins;
+drop policy if exists notes_all on public.town_notes;
+drop policy if exists invites_read on public.invites;
 
 create policy households_read on public.households for select to authenticated
   using (public.is_member(id));
@@ -137,17 +156,18 @@ create policy invites_read on public.invites for select to authenticated
   using (public.is_member(household_id));
 -- Invites are created through create_invite(); nobody reads another household's tokens.
 
--- Signed-out visitors get nothing from any table.
-revoke all on all tables in schema public from anon;
+-- Privileges: Supabase grants every new table to anon and authenticated, so take it all
+-- away first, then give back exactly what the app uses. Signed-out visitors get nothing.
+revoke all on public.households, public.household_members, public.household_settings,
+  public.pins, public.town_notes, public.invites from anon, authenticated;
 grant select, insert, update, delete on public.household_settings, public.pins, public.town_notes to authenticated;
-grant select on public.households to authenticated;
-grant update (mode) on public.households to authenticated;  -- nothing else is editable
-grant select on public.household_members, public.invites to authenticated;
+grant select on public.households, public.household_members, public.invites to authenticated;
+grant update (mode) on public.households to authenticated;  -- nothing else there is editable
 
 -- ---------------------------------------------------------------- functions
 
 -- A brand-new account makes its own map. Fails if the person already has one.
-create function public.create_household(p_mode text default 'single') returns uuid
+create or replace function public.create_household(p_mode text default 'single') returns uuid
 language plpgsql security definer set search_path = public as $$
 declare hid uuid;
 begin
@@ -163,7 +183,7 @@ begin
 end $$;
 
 -- A member of a couple's map makes a one-time link for their partner.
-create function public.create_invite(p_household uuid) returns text
+create or replace function public.create_invite(p_household uuid) returns text
 language plpgsql security definer set search_path = public as $$
 declare tok text;
 begin
@@ -178,7 +198,7 @@ begin
 end $$;
 
 -- The partner opens the link and joins. One map per person, two people per map.
-create function public.accept_invite(p_token text) returns uuid
+create or replace function public.accept_invite(p_token text) returns uuid
 language plpgsql security definer set search_path = public as $$
 declare inv invites%rowtype;
 begin
@@ -203,7 +223,7 @@ end $$;
 
 -- Delete the signed-in account. A map nobody belongs to any more is deleted with it
 -- (pins, notes, settings, invites cascade); a couple's map stays with the partner.
-create function public.delete_my_account() returns void
+create or replace function public.delete_my_account() returns void
 language plpgsql security definer set search_path = public, auth as $$
 declare me uuid := auth.uid();
 begin
@@ -216,15 +236,22 @@ begin
 end $$;
 
 revoke all on function public.create_household(text), public.create_invite(uuid),
-  public.accept_invite(text), public.delete_my_account(), public.is_member(uuid) from public, anon;
+  public.accept_invite(text), public.delete_my_account(), public.is_member(uuid),
+  public.pins_limit(), public.touch_updated_at() from public, anon, authenticated;
 grant execute on function public.create_household(text), public.create_invite(uuid),
   public.accept_invite(text), public.delete_my_account(), public.is_member(uuid) to authenticated;
 
 -- ---------------------------------------------------------------- live updates for couples
 
 do $$
+declare t text;
 begin
   if exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
-    alter publication supabase_realtime add table public.household_settings, public.pins, public.town_notes;
+    foreach t in array array['household_settings', 'pins', 'town_notes'] loop
+      if not exists (select 1 from pg_publication_tables
+                     where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t) then
+        execute format('alter publication supabase_realtime add table public.%I', t);
+      end if;
+    end loop;
   end if;
 end $$;

@@ -25,58 +25,68 @@ npm install
 npm run dev                         # http://localhost:5173
 ```
 
-With no Supabase settings the site runs in **this-device-only** mode: everything works,
-and maps are saved in the browser. That is also how the preview artifact runs.
+`npm run build` makes the website in `dist/` with accounts switched on (the project's
+public URL and anon key are in `.env.production`). `npm run build:preview` makes a
+no-login copy in `dist-preview/` for a claude.ai artifact.
 
-## Turn on accounts (Supabase)
+## Supabase: one-time setup
 
-1. **Create a project** at supabase.com. Free plan is fine to start.
-2. **Create the tables.** SQL Editor → New query → paste
-   `supabase/migrations/0001_init.sql` → Run.
-3. **Sign-in methods.** Authentication → Providers:
-   - Email: on. Magic links are the default; no passwords to manage.
-   - Google: on, with a Google Cloud OAuth client (Supabase's page links the steps).
-4. **Where sign-in links come back to.** Authentication → URL Configuration:
-   - Site URL: your domain, e.g. `https://atlas.example.com`
-   - Redirect URLs: the same, plus `http://localhost:5173` for development.
-5. **The two public values.** Project Settings → API:
-   - Project URL → `VITE_SUPABASE_URL`
-   - `anon` / publishable key → `VITE_SUPABASE_ANON_KEY`
+The project is `dvcqgoligcixiegyhnol`. Its URL and anon key are already in
+`.env.production`; they are public by design (they ship in the site's JavaScript), and
+the row-level security in the migration decides what anyone can read or write.
+**Never put the `service_role` key anywhere in this app.**
 
-   Put them in `web/.env.local` for development, and in GitHub (Settings → Secrets and
-   variables → Actions → **Variables**) for deploys. They are public by design: the
-   row-level security in the migration decides what anyone can read or write.
-   **Never use the `service_role` key anywhere in this app.**
+1. **Create the tables.** Supabase → SQL Editor → **New query** → paste all of
+   `supabase/migrations/0001_init.sql` → **Run**. If a "destructive operation" warning
+   appears, choose **Run this query** (the only deletes are inside the delete-my-account
+   function). It is safe to run again if anything goes wrong the first time.
+   Success looks like "Success. No rows returned".
+2. **Where sign-in links come back to.** Authentication → **URL Configuration**:
+   - Site URL: your Netlify address, e.g. `https://wilinski-atlas.netlify.app`
+   - Redirect URLs: the same address, plus `http://localhost:5173/**` for development.
+3. **Email that reaches people.** Supabase's built-in email only delivers to members of
+   your Supabase team, at about 2 emails an hour. Anyone else gets "Email address not
+   authorized" (the site explains this to them). Two ways forward:
+   - Testing with a few people: add them under Organization → Team.
+   - Anyone at all: Authentication → Emails → **SMTP Settings**, using a sender such as
+     Resend or Brevo (both have free tiers). Use an address on a domain you own.
+4. **Google sign-in (optional, later).** Authentication → Providers → Google, with a
+   Google Cloud OAuth client. The site shows the Google button only once it is on.
 
-Free Supabase projects pause after a week with no activity; a site people use never
-pauses, and Pro ($25/month) never does.
+## Netlify
 
-## Deploy (Cloudflare Pages)
+**First deploy, by hand:** build `dist/` (or use the zip from the session), then drag the
+folder onto app.netlify.com/drop. Netlify gives the site an address; put that address in
+Supabase step 2.
 
-`.github/workflows/web.yml` builds the data, runs every test, builds the site, and on
-`main` deploys it when these are set:
+**After that, automatically:** `.github/workflows/web.yml` rebuilds the data, runs every
+test, builds the site and deploys it on every push to `main`, and monthly so prices stay
+current. It needs, in GitHub → Settings → Secrets and variables → Actions:
 
-| Where | Name | Value |
+| Kind | Name | Where to find it |
 |---|---|---|
-| Variables | `CF_PAGES_PROJECT` | your Pages project name |
-| Secrets | `CLOUDFLARE_API_TOKEN` | a token with "Cloudflare Pages: Edit" |
-| Secrets | `CLOUDFLARE_ACCOUNT_ID` | from the Cloudflare dashboard |
-| Variables | `VITE_DONATE_URL` | optional: a Stripe Payment Link for the Support button |
+| Secret | `NETLIFY_AUTH_TOKEN` | Netlify → User settings → Applications → Personal access tokens |
+| Variable | `NETLIFY_SITE_ID` | Netlify → your site → Site configuration → Site ID |
+| Variable | `VITE_DONATE_URL` | optional: a Stripe Payment Link for the Support button |
 
-It also runs monthly so rents and prices stay current. Any static host works instead:
-upload `web/dist`.
+Don't connect the repository to Netlify's own build: building the data needs about a
+gigabyte of downloads, which the GitHub workflow caches and Netlify's builder would not.
+`public/_headers` sets caching and a Content-Security-Policy for Netlify.
 
 ## Tests
 
 ```bash
-npm test                         # wizard arithmetic (node)
-make test-db                     # row-level security on a throwaway Postgres (non-root)
+npm test                              # wizard arithmetic (node)
+make test-db                          # row-level security on a throwaway Postgres (non-root)
+python -m unittest tests.test_web     # the first-visit path in Chromium
 python -m unittest tests.test_atlas   # page scoring held to the Python engine
 ```
 
 `supabase/tests/rls.sql` signs in as four different people and checks that a stranger
 sees nothing of another household, an invite works once, a full couple takes nobody else,
-and deleting an account leaves the partner's map intact.
+and deleting an account leaves the partner's map intact. `auth_stub.sql` reproduces
+Supabase's defaults (extensions in their own schema, every new table granted to the API
+roles), which is what the first version of the migration tripped over.
 
 ## Before a public launch
 

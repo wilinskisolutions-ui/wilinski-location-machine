@@ -29,3 +29,5 @@ web/node_modules/
 web/dist/
 web/public/data/
 web/public/geo/
+
+web/dist-preview/

@@ -28,6 +28,33 @@ function returnUrl() {
   return u.toString();
 }
 
+// Which sign-in methods the project has switched on, read from Supabase's public settings,
+// so the page never offers a button that cannot work (Google stays hidden until set up).
+let providersCache = null;
+export function providers() {
+  if (!configured) return Promise.resolve({ email: false, google: false });
+  if (!providersCache) {
+    providersCache = fetch(`${URL}/auth/v1/settings`, { headers: { apikey: KEY } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => ({ email: j ? Boolean(j.external?.email) : true, google: Boolean(j?.external?.google) }))
+      .catch(() => ({ email: true, google: false }));
+  }
+  return providersCache;
+}
+
+// Supabase's own wording, turned into something a visitor can act on.
+export function friendlyError(err) {
+  const m = String(err?.message || err || "");
+  if (/not authori[sz]ed/i.test(m)) {
+    return "This site can't send sign-in emails to that address yet: it is still in a private test. Ask the person who shared it with you to add you.";
+  }
+  if (/rate limit|too many|security purposes/i.test(m)) {
+    return "Too many sign-in emails in a short time. Wait a few minutes and try again.";
+  }
+  if (/invalid.*email/i.test(m)) return "That doesn't look like an email address.";
+  return m || "Something went wrong. Try again in a moment.";
+}
+
 export async function sendMagicLink(email) {
   const sb = await supabase();
   const { error } = await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: returnUrl() } });

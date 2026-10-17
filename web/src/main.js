@@ -13,7 +13,7 @@ import * as auth from "./auth.js";
 import { defaultSettings, Model, normalizeSettings } from "./model.js";
 import { LocalStore, RemoteStore } from "./store.js";
 import { esc } from "./util.js";
-import { runWizard } from "./wizard.js";
+import { closeWizard, runWizard } from "./wizard.js";
 
 const DONATE_URL = import.meta.env.VITE_DONATE_URL || "";
 const $ = (sel) => document.querySelector(sel);
@@ -43,8 +43,8 @@ function signInModal(reason) {
     <form id="md-email" class="field"><label for="md-email-in">Email</label>
       <input id="md-email-in" type="email" required autocomplete="email" placeholder="you@example.com">
       <button type="submit" class="btn primary">Email me a sign-in link</button></form>
-    <p class="md-or">or</p>
-    <button type="button" class="btn" id="md-google">Continue with Google</button>
+    <p class="md-or" hidden>or</p>
+    <button type="button" class="btn" id="md-google" hidden>Continue with Google</button>
     <p class="note-saved" id="md-msg" role="status"></p>
     <p class="small muted">Your map stays on this device until you sign in, then moves to your account. We store your settings, pins and notes, nothing else. You can delete it all at any time.</p>`,
   (m) => {
@@ -54,10 +54,14 @@ function signInModal(reason) {
       const msg = m.querySelector("#md-msg");
       msg.textContent = "Sending…";
       try { await auth.sendMagicLink(email); msg.textContent = `Check ${email} for a sign-in link. Open it on this device to keep the map you just made.`; }
-      catch (err) { msg.textContent = `Could not send the link: ${err.message}`; }
+      catch (err) { msg.textContent = auth.friendlyError(err); }
     });
     m.querySelector("#md-google").addEventListener("click", async () => {
-      try { await auth.signInWithGoogle(); } catch (err) { m.querySelector("#md-msg").textContent = `Google sign-in failed: ${err.message}`; }
+      try { await auth.signInWithGoogle(); } catch (err) { m.querySelector("#md-msg").textContent = auth.friendlyError(err); }
+    });
+    auth.providers().then((p) => {
+      m.querySelector("#md-google").hidden = !p.google;
+      m.querySelector(".md-or").hidden = !p.google;
     });
   });
 }
@@ -141,6 +145,7 @@ async function editSetup() {
   const data = await Promise.resolve(store.load());
   data.settings = normalizeSettings(model.core, data.settings);
   app.show(data);
+  closeWizard();
 }
 
 async function firstRun(store) {
@@ -180,6 +185,7 @@ async function enterAccount(user, inviteToken) {
   if (!data.settings) data = await firstRun(remote);
   data.settings = normalizeSettings(model.core, data.settings);
   app.show(data);
+  closeWizard();
   renderAccount(user);
   unsubscribe();
   unsubscribe = remote.subscribe(async () => {
@@ -226,6 +232,7 @@ async function boot() {
   if (!data.settings?.done) data = await firstRun(local);
   data.settings = normalizeSettings(core, data.settings);
   app.show(data);
+  closeWizard();
   renderAccount(null);
 }
 

@@ -15,6 +15,16 @@ const STEP_TITLES = {
 };
 const MAX_PICKS = 5;
 
+// Close the wizard. On completion the caller closes it once the new map is drawn, so the
+// visitor never sees an empty map between the last step and their result.
+export function closeWizard() {
+  const root = document.getElementById("wizard");
+  root.hidden = true;
+  root.innerHTML = "";
+  root.onkeydown = null;
+  document.body.classList.remove("wizard-open");
+}
+
 export function runWizard(model, { settings, pins, cancellable = false }) {
   const root = document.getElementById("wizard");
   const s = structuredClone(settings);
@@ -28,9 +38,7 @@ export function runWizard(model, { settings, pins, cancellable = false }) {
     document.body.classList.add("wizard-open");
 
     function finish(result) {
-      root.hidden = true;
-      root.innerHTML = "";
-      document.body.classList.remove("wizard-open");
+      if (!result) closeWizard(); // cancelled: nothing to wait for
       resolve(result);
     }
 
@@ -260,6 +268,9 @@ export function runWizard(model, { settings, pins, cancellable = false }) {
       if (STEPS[step] === "life") refreshWeights();
       if (step < STEPS.length - 1) { step += 1; render(); return; }
       s.done = true;
+      const btn = root.querySelector("#wz-next");
+      btn.disabled = true;
+      btn.textContent = "Scoring 9,885 places…";
       finish({ settings: s, pins: picks });
     }
 

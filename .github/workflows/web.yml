@@ -1,11 +1,11 @@
 # Build the data, test everything, build the website, and (on main, once configured)
-# deploy it. Runs on every pull request, on main, and monthly so prices stay current.
+# deploy it to Netlify. Runs on every pull request, on main, and monthly so prices stay
+# current. The Supabase URL and anon key come from web/.env.production (public by design).
 #
 # Repository settings this uses (Settings -> Secrets and variables -> Actions):
-#   variables  VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY   public by design; RLS protects data
-#              VITE_DONATE_URL                             optional "Support" link
-#              CF_PAGES_PROJECT                            Cloudflare Pages project name
-#   secrets    CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID  only needed to deploy
+#   secrets    NETLIFY_AUTH_TOKEN   Netlify -> User settings -> Applications -> New access token
+#   variables  NETLIFY_SITE_ID      Netlify -> your site -> Site configuration -> Site ID
+#              VITE_DONATE_URL      optional "Support" link (a Stripe Payment Link)
 name: web
 
 on:
@@ -26,7 +26,7 @@ jobs:
     timeout-minutes: 75
     env:
       # At job level so the deploy step's `if` can see whether it is set.
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -64,11 +64,10 @@ jobs:
 
       - name: Build the website
         working-directory: web
-        env:
-          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
-          VITE_DONATE_URL: ${{ vars.VITE_DONATE_URL }}
+        # Only pass the donate link when it is set: an empty variable would override
+        # the value in .env files with an empty string.
         run: |
+          if [ -n "${{ vars.VITE_DONATE_URL }}" ]; then export VITE_DONATE_URL="${{ vars.VITE_DONATE_URL }}"; fi
           npm ci
           npm test
           npm run build
@@ -79,8 +78,6 @@ jobs:
           path: web/dist
           retention-days: 14
 
-      - name: Deploy to Cloudflare Pages
-        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && env.CLOUDFLARE_API_TOKEN != ''
-        env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: npx --yes wrangler@3.114.0 pages deploy web/dist --project-name="${{ vars.CF_PAGES_PROJECT }}" --branch=main
+      - name: Deploy to Netlify
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && env.NETLIFY_AUTH_TOKEN != ''
+        run: npx --yes netlify-cli@27.10.2 deploy --prod --dir web/dist --site "${{ vars.NETLIFY_SITE_ID }}" --message "${{ github.sha }}"
