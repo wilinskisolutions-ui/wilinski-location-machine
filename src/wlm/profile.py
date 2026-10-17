@@ -18,6 +18,7 @@ import polars as pl
 import yaml
 
 from wlm.elicit import (
+    agreement,
     blend,
     compare,
     domain_weights_from_choices,
@@ -29,6 +30,12 @@ from wlm.paths import CONFIG, PROCESSED
 # How far each step on the "compared to Harrisburg" scale moves a band, as a fraction of
 # the indicator's national spread. One step is a noticeable but not drastic change.
 STEP_FRACTION = 0.6
+# Within-domain weight for an indicator the household gave a definite preference about,
+# against the engine's 0.05 floor for one they were never asked. Three times the floor:
+# enough that a stated preference leads its domain, not so much that the rest stops
+# counting.
+STATED_PREFERENCE_WEIGHT = 0.15
+
 BAND_HALF_WIDTH = 0.5  # half-width of the accepted band, also in national standard deviations
 
 
@@ -313,6 +320,44 @@ def build_profile(session, questions: list[dict]) -> dict:
             + (f"; left off: {', '.join(sorted(off))}" if off else "")
         )
 
+    # --- within-domain weights ---
+    #
+    # A domain weight spread evenly over everything in it dilutes whatever the household
+    # actually cares about: weighting climate at 30 points gave winter temperature about a
+    # sixteenth of it, and a couple asking for warm winters got places averaging 48F.
+    #
+    # The trade-off fit supplies these **only when it carries signal**. It used to supply
+    # them unconditionally, which meant a household whose choices were rejected as noise
+    # for the purpose of domain weights still had that same noise deciding which indicators
+    # mattered inside each domain — the gate was applied to one output of the fit and not
+    # the other. When the fit is rejected, the household's own band answers take over: an
+    # indicator they gave a definite preference for outranks one they were never asked
+    # about, which is stated rather than fitted but is at least theirs.
+    if fit.is_informative and fit.weights:
+        indicator_weights = {k: round(v, 5) for k, v in fit.weights.items()}
+    else:
+        indicator_weights = {
+            indicator: STATED_PREFERENCE_WEIGHT
+            for indicator, override in overrides.items()
+            if not override.get("indifferent")
+        }
+
+    # --- do the stated weights actually predict the choices? ---
+    #
+    # This replaces weight *estimation* as the trade-off block's main job, because
+    # estimation turned out not to be possible at this length. See elicit.agreement for the
+    # measurement; the short version is that twenty-five choices cannot identify one free
+    # parameter per attribute, while testing a stated weight vector against the same
+    # choices has none at all and is a straightforward binomial test.
+    check = agreement(
+        tasks,
+        answers,
+        domain_weights=weights,
+        domain_of=domain_of,
+        registry=registry,
+        curve_overrides=overrides,
+    )
+
     notes = {
         q["maps_to"]["target"]: answers[q["id"]]
         for q in questions
@@ -330,15 +375,17 @@ def build_profile(session, questions: list[dict]) -> dict:
             "contradictions": fit.contradictions,
             "stated_vs_revealed": compare(stated, revealed),
             "weighting_notes": weight_notes,
+            "agreement": {
+                "rate": round(check.rate, 3),
+                "n_choices": check.n_choices,
+                "p_value": round(check.p_value, 4),
+                "significant": check.is_significant,
+                "summary": check.render(),
+                "largest_disagreements": check.misses,
+            },
         },
         "domain_weights": weights,
-        # Within-domain weights, straight from the trade-off fit.
-        #
-        # Without these, a domain weight is spread evenly over everything in it: weighting
-        # climate at 30 points diluted winter temperature to about 1/16, because the domain
-        # holds sixteen indicators. A couple asking for warm winters got places averaging
-        # 48F instead of the 50-70F they asked for. The end-to-end test caught it.
-        "indicator_weights": {k: round(v, 5) for k, v in fit.weights.items()},
+        "indicator_weights": indicator_weights,
         "curve_overrides": overrides,
         "knockouts": knockouts,
         "sensitive_opt_in": sensitive,
