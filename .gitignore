@@ -23,3 +23,9 @@ venv/
 
 # questionnaire sessions are personal working state, not project history
 profiles/.sessions/
+
+# web app: dependencies, build output, and the data bundle copied in from output/atlas
+web/node_modules/
+web/dist/
+web/public/data/
+web/public/geo/

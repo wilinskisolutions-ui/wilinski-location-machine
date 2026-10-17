@@ -2,7 +2,7 @@ PY := PYTHONPATH=src python3
 PYTEST := PYTHONPATH=src:tests python3
 
 .PHONY: help validate test demo data universe features score diagnostics report \
-	audit calibrate coverage questionnaire phone-pages atlas clean
+	audit calibrate coverage questionnaire phone-pages atlas web test-web test-db clean
 
 help:
 	@echo "validate     Check config registries against the GOAL.md principles"
@@ -21,6 +21,9 @@ help:
 	@echo "diagnostics  Hype residual, coverage, sensitivity        [Phase 4]"
 	@echo "report       Build the ranked report - refuses any rank without its band"
 	@echo "atlas        Build the interactive map (output/atlas) - publish with the Artifact tool"
+	@echo "web          Build the public website into web/dist (needs: make atlas, npm)"
+	@echo "test-web     The website's own unit tests (node)"
+	@echo "test-db      Row-level security checks on a throwaway Postgres (run as non-root)"
 
 validate:
 	@$(PY) -m wlm.config.validate
@@ -44,6 +47,15 @@ audit:
 
 atlas:
 	@$(PY) -m wlm.atlas.build
+
+web:
+	@cd web && npm install --no-audit --no-fund && npm run build
+
+test-web:
+	@cd web && npm test
+
+test-db:
+	@web/supabase/tests/run-local.sh
 
 calibrate:
 	@$(PY) -m wlm.diagnostics.calibration

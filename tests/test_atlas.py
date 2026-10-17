@@ -19,7 +19,7 @@ from pathlib import Path
 from shapely.geometry import Polygon
 
 from wlm.atlas import build, geometry
-from wlm.paths import CONFIG
+from wlm.paths import CONFIG, FEATURES
 from wlm.scoring.engine import EPSILON, MIN_WEIGHT_COVERED, combine_domains
 from wlm.units import fmt
 
@@ -85,6 +85,14 @@ class TestPageScoresMatchTheEngine(unittest.TestCase):
         for (value, unit), js in zip(cases, got):
             self.assertEqual(js, fmt(value, unit), f"{value} {unit}")
 
+    def test_ideal_point_agrees_with_curves(self):
+        from wlm.features.curves import ideal_point
+
+        cases = [(-0.9, 0, 0.25), (0.0, 0, 0.25), (0.33, 0, 0.25), (0.12, 0.1, 1.0), (5, 0, 3)]
+        got = run_node("(xs)=>xs.map(([v,t,tol])=>A.idealPoint(v,t,tol))", cases)
+        for (v, t, tol), js in zip(cases, got):
+            self.assertAlmostEqual(js, ideal_point(v, target=t, tol=tol), places=12)
+
     def test_ring_decoding_agrees(self):
         ring = geometry.encode_ring([(-86.85, 35.91), (-86.80, 35.91), (-86.80, 35.95), (-86.85, 35.91)], 10000)
         got = run_node("(x)=>A.decodeRing(x.ring, x.q)", {"ring": ring, "q": 10000})
@@ -147,6 +155,61 @@ class TestConfig(unittest.TestCase):
         ids = set(pl.read_parquet(UNIVERSE)["geo_id"])
         for w in self.cfg["wishlist"]:
             self.assertIn(w["anchor"], ids, f"{w['label']} anchors on a place outside the universe")
+
+
+class TestPublicSite(unittest.TestCase):
+    """The web section of atlas.yaml: weights, winter presets, visitor-directed layers."""
+
+    def setUp(self):
+        from wlm.ingest.base import registry
+
+        self.registry = registry()
+        self.cfg = build.load_config()
+
+    def test_real_config_passes(self):
+        build.check_web(self.cfg, self.registry)
+
+    def test_web_weights_must_cover_every_public_factor(self):
+        cfg = json.loads(json.dumps(self.cfg))
+        cfg["web"]["default_weights"].pop("cost")
+        with self.assertRaises(build.AtlasError):
+            build.check_web(cfg, self.registry)
+
+    def test_household_only_factor_is_not_offered_publicly(self):
+        self.assertNotIn("church", self.cfg["web"]["default_weights"])
+
+    def test_a_layer_must_point_at_a_sensitive_indicator(self):
+        cfg = json.loads(json.dumps(self.cfg))
+        cfg["web"]["sensitive_layers"][0]["indicator"] = "cost_rent_median_zori"
+        with self.assertRaises(build.AtlasError):
+            build.check_web(cfg, self.registry)
+
+    def test_layers_never_assume_a_direction(self):
+        for layer in self.cfg["web"]["sensitive_layers"]:
+            self.assertGreaterEqual(len(layer["directions"]), 2, layer["id"])
+
+    @unittest.skipUnless(Path(FEATURES).exists(), "features not built")
+    def test_winter_presets_reorder_cold_and_warm_places(self):
+        import polars as pl
+
+        cp = build.climate_preset_scores(pl.read_parquet(FEATURES), self.cfg, self.registry)
+        ids = [p["id"] for p in self.cfg["web"]["climate_presets"]]
+        snowy, hot = ids.index("snowy"), ids.index("hot")
+        duluth, sarasota = cp["27137"], cp["12115"]  # St. Louis County MN, Sarasota County FL
+        self.assertGreater(duluth[snowy], sarasota[snowy])
+        self.assertGreater(sarasota[hot], duluth[hot])
+
+    @unittest.skipUnless(Path(FEATURES).exists(), "features not built")
+    def test_sensitive_values_carry_percentile_and_raw_at_their_own_level(self):
+        import polars as pl
+
+        sv = build.sensitive_values(pl.read_parquet(FEATURES), self.cfg)
+        county = sv[("county", "47187")]  # Williamson County TN
+        self.assertTrue(0 <= county[0] <= 1)   # religion percentile
+        self.assertIsNone(county[4])           # foreign-born is a town-level layer
+        town = sv[("place", "4727740")]        # Franklin TN
+        self.assertIsNone(town[0])
+        self.assertTrue(0 <= town[4] <= 1)
 
 
 class TestRents(unittest.TestCase):

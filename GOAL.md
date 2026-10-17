@@ -122,7 +122,10 @@ household can defend the list, including to themselves in five years.
 
 This project is explicitly **not**:
 
-- A general-purpose US city database or a product for anyone else.
+- A general-purpose US city database. *(Amended 2026-10-17: it was also "not a product for
+  anyone else". The household decided to offer the atlas to other households as a website,
+  each scored on their own answers; see `CONTEXT.md`. The principles above apply to every
+  visitor exactly as they apply to this household.)*
 - A real-estate tool. It does not find houses, price properties, or time markets.
 - A substitute for visiting. Its purpose is to decide *where to spend the visits*.
 - An optimizer that produces one right answer. It narrows ~8,000 candidates to a
