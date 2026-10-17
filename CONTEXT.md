@@ -5,18 +5,15 @@
 > is the project's working memory: a session that reads it should be able to resume cold
 > without re-deriving anything or re-asking a settled question.
 
-**Current phase:** Phase 4 — Scoring · **Status:** complete. Engine, two-stage ranking, rank
-bands, report and all four anti-bias diagnostics run end to end. **All 10 GOAL.md principles
-pass** (`output/audit.md`). **54 of 65 indicators populated; no scoring domain is empty.**
-Four planned bug sweeps, plus real use finding a fifth round the moment a real household's
-answers first exercised the elicitation path — each round found bugs in a path nothing had
-exercised, and the rate is not yet falling.
-**Emil has answered.** `profiles/emil.yaml` is real, not synthetic — his trade-off choices
-did not carry enough cross-validated signal to trust (see 2026-08-23 entry below), so his
-weights are his stated budget allocation directly. His personal report is built and
-published. **Still blocking a joint household ranking:** Winsor's answers.
-**Answering:** the questionnaire now also runs as a phone artifact, one page per person.
-**Last updated:** 2026-08-23
+**Current phase:** Phase 4 complete; **Phase 5/6 tooling started — the atlas.** An interactive
+map (`make atlas`, published at `https://claude.ai/artifact/Y4oyTiP8Xoa6LNQdDaoQeU`) puts the
+household's own wishlist next to the machine's live challengers, every town scored the same way
+under joint weights the couple set together on the map. All 10 GOAL.md principles pass;
+**56 of 66 indicators populated.** A fresh clone now rebuilds from scratch: `make data` fetches
+the four API sources it used to skip.
+**Still open:** Winsor's questionnaire answers, and `profiles/emil.yaml` is not in the repo (it
+was never committed; Emil's budget split survives only in the 2026-08-23 entry below).
+**Last updated:** 2026-10-15
 
 ---
 
@@ -35,13 +32,15 @@ Phase 3 questionnaire; anything already known is recorded here so it is never re
 | Baseline role | **Baseline only.** Scored and used as the reference, excluded from candidates — they are definitely leaving. |
 | Push factors | **Climate/weather** and **things to do, culture, food.** Built first and deepest. |
 | Geographic pull | No hard constraint. Warm preferred; family in Europe, which they read as implying the east coast. |
-| Work situation | Unknown — appears to involve a business (`wilinskisolutions`); confirm whether income is location-independent |
-| Budget | Unknown |
-| Timeline | Unknown |
-| Children | Unknown (current and planned both matter — they weight different domains) |
+| Work situation | **Income fully portable** (2026-10-15). Local jobs start at weight 0 on the atlas. |
+| Budget | **Rent first, then buy.** Rent ceiling **$2,000/month** (2026-10-15). Purchase budget not yet given. |
+| Timeline | Exploring areas in person through **September 2027** (2026-10-15). |
+| Children | **None, none planned** (2026-10-15). Schools and childcare start at weight 0. |
 | Pets | Unknown |
 | Stated leaning | Describes the household as "more conservative"; explicitly not ready to turn this into a filter |
 | Non-negotiables | None captured yet |
+| Wishlist (2026-10-15) | Washington DC suburbs, Boston, Franklin TN (with Nashville), St. Augustine FL, Sarasota FL. Treated as places to *test*, not candidates — see the atlas entry. |
+| Lifestyle factors named (2026-10-15) | Church community, walkable downtown and food, water and nature, airport access to Europe. |
 
 ---
 
@@ -584,6 +583,91 @@ reasoning as regression guards. Full suite still green; `make audit` still 10/10
 
 ---
 
+### 2026-10-15 — The atlas: a map over the evidence, and the wishlist put to the test
+
+The household asked for "a futuristic, interactive map of the United States" to manage a year
+of exploring — Washington DC's suburbs, Boston, Franklin TN, St. Augustine and Sarasota — with
+each place zooming into its towns, and research on which make sense financially and for safety.
+
+**The tension, stated up front.** That list is two Florida towns and a Nashville suburb: the
+exact shape GOAL.md names as the internet's retrieval bias, and the 2026-08-22 preliminary
+filter found no Florida or Tennessee county surviving its own hazard numbers. Principle 1 says
+nothing enters the universe because it came up in conversation. **Resolution:** the wishlist does
+not enter the universe — every one of those places is already in it. A pin is a *view*: a radius
+around an existing place, scored identically to every other town. And the map always shows the
+machine's challengers beside the picks, so the wishlist is tested rather than trusted.
+
+**Decisions taken by the household (multiple-choice, 2026-10-15):**
+
+| Question | Answer | Consequence |
+|---|---|---|
+| Relationship to the machine | Wishlist + machine picks | Challengers recomputed live, `engine.two_stage` in miniature |
+| Zoom depth | Towns + ZIP prices | Census place outlines + Zillow ZIP rents (ZCTA) |
+| Housing | Rent first, then buy | Rent drives the budget flag; ZHVI shown for later |
+| Income | Fully portable | `jobs` factor starts at 0 |
+| Children | None, none planned | `schools` factor starts at 0 |
+| Rent ceiling | Under $2,000/mo | Flag, never a silent removal: over-budget towns stay visible, red |
+| Lifestyle factors | Church, downtown & food, water & nature, Europe airport | Religious adherence **opted in** (Principle 10), higher-is-better by their stated direction |
+| Scoring until Winsor answers | **Set joint weights together now** | See the amendment below |
+
+**Principle 8 amendment (atlas only).** The household chose one shared 100-point split, set
+together on the map, over separate scoring. Old rule: each partner scored separately, conflict
+surfaced. New rule *for the atlas*: one joint weight vector, stored in the page's shared store.
+The engine's `joint()` and the questionnaire are untouched, so separate scoring remains available
+the moment Winsor's answers exist. Reason: they want one map to plan trips from, now.
+
+**How it is built — and why it cannot drift from the engine.**
+- `config/atlas.yaml` regroups every registered indicator into 13 factors (rent & cost, safety,
+  hurricane & hazard, climate, downtown & food, water & nature, church community, health, Europe
+  flights, community, town size, jobs, schools). The build refuses to run if an indicator is
+  placed twice, or nowhere without an exclusion reason.
+- Per-factor scores come from `engine.domain_scores` — a new split of `engine.score` into its
+  within-domain half and `engine.combine_domains`. The page recombines with the household's
+  weights in `score.js`, and `tests/test_atlas.py` holds it to `combine_domains` over 400 random
+  cases, holds its formatter to `wlm.units.fmt`, and its ring decoder to the Python encoder.
+- Town rent = land-area-weighted Zillow ZORI over the ZIPs overlapping the town (Census 2020
+  ZCTA-to-place relationship file), required to cover at least 25% of the town's land; otherwise
+  the county figure stands in, labelled. 5,070 of 6,741 towns get a town-level rent.
+- Outlines: Census cartographic boundary files, simplified per zoom, one lazy-loaded file per state.
+
+**What the data said on the first run (default weights, $2,000 cap):**
+
+| Area | Best town (fit) | Its rent | Towns under cap |
+|---|---|---|---|
+| Washington DC & suburbs | Manassas (56) | $2,229 | 47 of 216 |
+| Boston area | Franklin Town (40) | $2,663 | 0 of 68 |
+| Franklin & Nashville | Brentwood (49) | $2,068 | 4 of 11 |
+| St. Augustine | Fruit Cove (46) | $2,032 | 2 of 8 |
+| Sarasota | Sarasota Springs (42) | $2,002 | 6 of 25 |
+| Top challenger | Lynchburg, VA (65) | $1,268 | — |
+| Home | Harrisburg, PA (50) | $1,375 | — |
+
+Every picked area's best-fitting town is over the cap; Boston has no town under it at all.
+Sarasota city scores 0.11 on hurricane and hazard. The top challenger — Lynchburg, Shenandoah
+side of Virginia — is in the same corridor Emil's own ranking found on 2026-08-23.
+
+**Four repairs made on the way:**
+
+1. **A fresh clone could not build features.** BTS, FEMA NRI, CDC and the Urban Institute school
+   data were fetched by hand in earlier sessions and never manifested, so `make features` died on
+   the first missing JSON. `wlm.ingest.api_sources` now fetches them in `make data`, through each
+   module's own reader, with checksums.
+2. **The Zillow reader inherited stale prices.** Its docstring promised a suppressed market would
+   "stay missing rather than inherit a stale 2019 price"; `_latest` walked back to 2000. Now capped
+   at 12 months, with a test.
+3. **The USDA amenities scale was never ingested for real** — only the demo fixture existed.
+   The ERS workbook is now downloaded and read, and its water-area component is registered as
+   `env_water_area_share` (66 indicators; 56 populated).
+4. **`engine.score` split** into `domain_scores` + `combine_domains`, behaviour unchanged (full
+   suite green), so the atlas reuses the engine instead of reimplementing it.
+
+**Known limits, stated rather than hidden.** Climate still scores against the provisional
+40-62°F winter band, not an elicited one. Crime is still absent from safety. ZIP rents exist only
+where Zillow publishes (8,459 ZIPs). The shared store makes the page organization-internal:
+Winsor needs access to the claude.ai organization to open it.
+
+---
+
 ## Data inventory
 
 Nothing ingested yet — Phase 0 built no pipeline by design. `docs/data-sources.md` holds
@@ -656,6 +740,11 @@ extra — it drives real Chromium through Playwright, and skips itself when eith
 ---
 
 ## Next actions
+
+0. **Use the atlas together** — `https://claude.ai/artifact/Y4oyTiP8Xoa6LNQdDaoQeU`. Set the
+   joint weights first (the Weights tab), then plan visits: for every two wishlist areas, one
+   challenger. Rebuild with `make atlas` and republish `output/atlas/index.html` after any data
+   or config change. Tell us the real winter-temperature band to replace the placeholder.
 
 1. **Emil practises, then both answer.** Two routes, same 56 questions:
    * **Phone** — one published artifact per person, plus a practice page. Answers stay

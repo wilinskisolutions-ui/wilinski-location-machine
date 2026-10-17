@@ -19,6 +19,7 @@ Non-PD sources are flagged and carry attribution or non-commercial terms — not
 |---|---|---|---|---|
 | Census Gazetteer files | `census.gov/geographies/reference-files/time-series/geo/gazetteer-files.html` | county, place | 2024 | PD |
 | Census TIGER/Line | `www2.census.gov/geo/tiger/` | all | 2024 | PD |
+| Census 2020 ZCTA-to-place relationship file | `www2.census.gov/geo/docs/maps-data/data/rel2020/` | ZIP, place | 2020 | PD |
 | CBSA delineation files | `census.gov/geographies/reference-files/time-series/demo/metro-micro/delineation-files.html` | metro | 2023 | PD |
 
 ## Demographics and housing stock

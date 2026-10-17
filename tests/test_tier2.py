@@ -43,6 +43,14 @@ class TestZillowLatest(unittest.TestCase):
         cols = ["2024-01-31", "2024-02-29"]
         self.assertIsNone(zillow._latest({"2024-01-31": "", "2024-02-29": ""}, cols))
 
+    def test_a_long_dead_market_is_none_not_its_old_price(self):
+        # Zillow stopped publishing this market 20 months before the newest column.
+        cols = [f"{2023 + (m // 12)}-{m % 12 + 1:02d}-28" for m in range(24)]
+        row = {c: "" for c in cols} | {cols[3]: "1450"}
+        self.assertIsNone(zillow._latest(row, cols))
+        row[cols[-6]] = "1900"
+        self.assertEqual(zillow._latest(row, cols), 1900.0)
+
 
 class TestChrInversion(unittest.TestCase):
     def test_pcp_is_inverted_to_people_per_physician(self):

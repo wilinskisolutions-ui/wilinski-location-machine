@@ -55,6 +55,7 @@ make score      # rank counties, then towns inside the winners, with rank bands
 make diagnostics # hype residual, blind export, political with/without
 make report     # the readable ranking - refuses any rank without its band
 make audit      # check the system against the ten principles in GOAL.md
+make atlas      # the interactive map: picks, challengers, town outlines, ZIP rents
 ```
 
 `validate` needs PyYAML alone. The pipeline stages need `pip install -e ".[pipeline]"`.
@@ -82,7 +83,7 @@ a placeholder nobody chose, and the pipeline says so at every stage that uses on
 | 3 — Questionnaire | Local instrument, elicitation, calibration | **built, awaiting answers** |
 | 4 — Engine | Scoring, rank bands, anti-bias diagnostics, report | built, running on placeholders |
 | 5 — Shortlist | Top ~25 deep dive, blind evaluation | |
-| 6 — Field | Visit plan and final decision | |
+| 6 — Field | Visit plan and final decision | **atlas built** — map for planning and logging visits |
 
 Phase 3 is blocked on the household, not on data: the calibration set of 15-20 known
 places rated 1-10. Without it there is no way to check that fitted weights reproduce

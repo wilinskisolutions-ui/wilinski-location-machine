@@ -2,7 +2,7 @@ PY := PYTHONPATH=src python3
 PYTEST := PYTHONPATH=src:tests python3
 
 .PHONY: help validate test demo data universe features score diagnostics report \
-	audit calibrate coverage questionnaire phone-pages clean
+	audit calibrate coverage questionnaire phone-pages atlas clean
 
 help:
 	@echo "validate     Check config registries against the GOAL.md principles"
@@ -20,6 +20,7 @@ help:
 	@echo "score        Apply curves, weights, knockouts, rank bands"
 	@echo "diagnostics  Hype residual, coverage, sensitivity        [Phase 4]"
 	@echo "report       Build the ranked report - refuses any rank without its band"
+	@echo "atlas        Build the interactive map (output/atlas) - publish with the Artifact tool"
 
 validate:
 	@$(PY) -m wlm.config.validate
@@ -40,6 +41,9 @@ questionnaire:
 
 audit:
 	@$(PY) -m wlm.diagnostics.audit
+
+atlas:
+	@$(PY) -m wlm.atlas.build
 
 calibrate:
 	@$(PY) -m wlm.diagnostics.calibration

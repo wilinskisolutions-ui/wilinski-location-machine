@@ -7,6 +7,7 @@ sources:
   # --- geography / universe ---
   - {id: census_gazetteer,   name: Census Gazetteer files,          url: "https://www.census.gov/geographies/reference-files/time-series/geo/gazetteer-files.html", geo_levels: [county, place], vintage: "2024",           license: PD}
   - {id: census_tiger,       name: Census TIGER/Line,               url: "https://www2.census.gov/geo/tiger/",                    geo_levels: [county, place],  vintage: "2024",            license: PD}
+  - {id: census_rel2020,     name: Census 2020 ZCTA-to-place relationship file, url: "https://www2.census.gov/geo/docs/maps-data/data/rel2020/", geo_levels: [place], vintage: "2020", license: PD}
   - {id: census_cbsa,        name: CBSA delineation files,          url: "https://www.census.gov/geographies/reference-files/time-series/demo/metro-micro/delineation-files.html", geo_levels: [metro], vintage: "2023", license: PD}
 
   # --- demographics / housing ---
