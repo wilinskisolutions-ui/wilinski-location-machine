@@ -56,9 +56,10 @@ factors:
 
   - id: nature
     label: Water & nature
-    blurb: How much of the county is water (lakes, rivers, coast), and park access.
+    blurb: >
+      Terrain, how much of the county is water (lakes, rivers, coast), and park access.
     default_weight: 8
-    indicators: [env_water_area_share, rec_park_access]
+    indicators: [env_topographic_variation, env_water_area_share, rec_park_access]
 
   - id: church
     label: Church community

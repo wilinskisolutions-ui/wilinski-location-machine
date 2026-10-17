@@ -50,18 +50,29 @@ class TestPageScoresMatchTheEngine(unittest.TestCase):
             if rng.random() < 0.1 and per:
                 per[next(iter(per))] = 0.0  # below the epsilon floor
             weights = {d: rng.choice([0, 0, 1, 4, 8, 12, 16, 30]) for d in domains}
-            cases.append((per, weights))
+            # The influence reshaping changes the ranking, so the page has to apply it
+            # identically or moving the weights there ranks by a different rule than the
+            # report. Identity pairs are included so the unshaped path stays covered.
+            shape = {
+                d: (rng.choice([1.0, 1.0, 0.5, 0.78, 1.4, 2.5]), rng.uniform(-2.5, -0.1))
+                for d in domains
+            }
+            cases.append((per, weights, shape))
 
         payload = [
-            {"f": [per.get(d) for d in domains], "w": [weights[d] for d in domains]}
-            for per, weights in cases
+            {
+                "f": [per.get(d) for d in domains],
+                "w": [weights[d] for d in domains],
+                "s": [list(shape[d]) for d in domains],
+            }
+            for per, weights, shape in cases
         ]
         got = run_node(
-            f"(xs)=>xs.map(x=>A.combine(x.f,x.w,{EPSILON},{MIN_WEIGHT_COVERED}))", payload
+            f"(xs)=>xs.map(x=>A.combine(x.f,x.w,{EPSILON},{MIN_WEIGHT_COVERED},x.s))", payload
         )
         compared = 0
-        for (per, weights), js in zip(cases, got):
-            ref = combine_domains(per, weights)
+        for (per, weights, shape), js in zip(cases, got):
+            ref = combine_domains(per, weights, shape)
             if ref is None:
                 self.assertIsNone(js)
                 continue

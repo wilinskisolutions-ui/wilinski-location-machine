@@ -279,6 +279,23 @@ def _sources() -> dict[str, dict]:
     return {s["id"]: {"name": s["name"], "url": s["url"], "license": s["license"]} for s in reg}
 
 
+def _shape(cfg: dict, county_f: dict, place_f: dict) -> list[list[float]]:
+    """Per-factor influence reshaping, in the page's factor order.
+
+    Measured over counties and towns together, because the page ranks towns while showing
+    county context and a factor's spread should be the one the household actually sees.
+    """
+    from wlm.scoring.engine import influence_scale
+
+    combined = {("c", k): v for k, v in county_f.items()}
+    combined.update({("p", k): v for k, v in place_f.items()})
+    shape = influence_scale(combined)
+    return [
+        [_r(shape.get(f, (1.0, 0.0))[0], 6), _r(shape.get(f, (1.0, 0.0))[1], 6)]
+        for f in (x["id"] for x in cfg["factors"])
+    ]
+
+
 def build_core(
     cfg: dict,
     registry: dict[str, dict],
@@ -342,6 +359,10 @@ def build_core(
         "built": date.today().isoformat(),
         "eps": EPSILON,
         "minCov": MIN_WEIGHT_COVERED,
+        # One [k, centre] pair per factor, in factor order. The page applies it in
+        # score.js exactly as engine.combine_domains does, so moving the weights here
+        # ranks by the same rule as the report.
+        "shape": _shape(cfg, county_f, place_f),
         "factors": [{k: f[k] for k in ("id", "label", "blurb", "default_weight")} for f in cfg["factors"]],
         "inds": inds,
         "sources": _sources(),

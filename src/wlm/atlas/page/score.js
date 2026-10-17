@@ -10,7 +10,13 @@
 (function (root) {
   "use strict";
 
-  function combine(f, w, eps, minCov) {
+  /* `shape` is engine.influence_scale: one [k, centre] pair per factor, in log space,
+     stretching each factor about its own mean so that a factor's pull on the ranking
+     follows the weight the household gave it rather than the number of indicators the
+     factor happens to hold. Without it this page would rank by a different rule than the
+     report. Omitted or k === 1 leaves a factor untouched, and `worst` is always the RAW
+     value, because that is the 0-1 figure shown on screen. */
+  function combine(f, w, eps, minCov, shape) {
     let total = 0, den = 0, num = 0, worst = -1, worstV = Infinity;
     for (let i = 0; i < w.length; i++) {
       const wi = w[i];
@@ -19,7 +25,10 @@
       const v = f[i];
       if (v === null || v === undefined) continue;
       den += wi;
-      num += wi * Math.log(Math.max(v, eps));
+      const sh = shape && shape[i];
+      const k = sh ? sh[0] : 1;
+      const lg = Math.log(Math.max(v, eps));
+      num += wi * (k === 1 ? lg : sh[1] + k * (lg - sh[1]));
       if (v < worstV) { worstV = v; worst = i; }
     }
     if (den === 0) return null;
