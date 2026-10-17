@@ -109,6 +109,19 @@ def resolve_sensitive_opt_in(questions: list[dict], answers: dict) -> tuple[list
     return labels, indicators
 
 
+def _floors() -> dict[str, float]:
+    """The lowest value each indicator actually takes nationally.
+
+    A band offset can otherwise run past the end of the scale: "much less snow than here"
+    produced a band starting at -19 inches. It scores identically to one starting at 0,
+    since nowhere has negative snowfall, but the profile is a document the household is
+    asked to check, and a floor below zero makes it unreadable.
+    """
+    f = pl.read_parquet(PROCESSED / "features.parquet").filter(pl.col("value").is_not_null())
+    stats = f.group_by("indicator_id").agg(pl.col("value").min().alias("floor"))
+    return {r["indicator_id"]: r["floor"] for r in stats.iter_rows(named=True)}
+
+
 def _spreads() -> dict[str, tuple[float, float]]:
     """National mean and standard deviation per indicator, for scaling band offsets."""
     f = pl.read_parquet(PROCESSED / "features.parquet").filter(pl.col("value").is_not_null())
@@ -121,6 +134,7 @@ def _spreads() -> dict[str, tuple[float, float]]:
 def build_profile(session, questions: list[dict]) -> dict:
     registry = _registry()
     spreads = _spreads()
+    floors = _floors()
     answers = session.answers
 
     by_id = {q["id"]: q for q in questions}
@@ -186,14 +200,53 @@ def build_profile(session, questions: list[dict]) -> dict:
         step = (std or abs(mean) * 0.1) * STEP_FRACTION
         centre = anchor + offset * step
         half = (std or abs(mean) * 0.1) * BAND_HALF_WIDTH
+        lo, hi = centre - half, centre + half
+        floor = floors.get(indicator)
+        if floor is not None:
+            lo = max(lo, floor)
         overrides[indicator] = {
             "curve": "ideal_band",
             "curve_params": {
-                "lo": round(centre - half, 2),
-                "hi": round(centre + half, 2),
+                "lo": round(lo, 2),
+                "hi": round(hi, 2),
                 "shoulder": round(half * 2, 2),
             },
             "elicited_from": qid,
+        }
+
+    # --- concrete band questions ---
+    #
+    # Some quantities cannot be anchored against Harrisburg on a five-point scale. County
+    # population spans five orders of magnitude, so "Harrisburg's county has 290,886 people
+    # — somewhat more or somewhat less?" is not a question anyone can answer, and the first
+    # respondent duly answered "don't care either way". q_town_size instead offers four
+    # places a person can picture and maps the chosen one onto a band.
+    #
+    # The band is MULTIPLICATIVE, not additive: for a quantity like population, half as
+    # many and twice as many are the same size of step, while plus or minus a fixed number
+    # of people is meaningless at one end of the range and enormous at the other.
+    for q in questions:
+        target = q.get("maps_to", {})
+        if target.get("kind") != "curve_band":
+            continue
+        answer = answers.get(q["id"])
+        if answer in (None, ""):
+            continue
+        centre = (q.get("option_values") or {}).get(answer)
+        if centre is None:  # an explicit "don't mind"
+            overrides[target["target"]] = {"indifferent": True}
+            continue
+        spread = float(target.get("spread", 2.5))
+        lo, hi = float(centre) / spread, float(centre) * spread
+        overrides[target["target"]] = {
+            "curve": "ideal_band",
+            "curve_params": {
+                "lo": round(lo, 2),
+                "hi": round(hi, 2),
+                "shoulder": round(hi - lo, 2),
+                "shoulder_lo": round(lo * 0.75, 2),
+            },
+            "elicited_from": q["id"],
         }
 
     # --- knockouts ---

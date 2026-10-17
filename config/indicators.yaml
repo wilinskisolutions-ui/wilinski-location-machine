@@ -18,6 +18,8 @@ indicators:
   - id: cost_home_value_median
     domain: cost_housing
     label: Median home value (Zillow ZHVI)
+    phrasing: numeric
+    question_label: "Typical home price"
     source: zillow_research
     geo_level: county
     curve: lower_better
@@ -28,6 +30,8 @@ indicators:
   - id: cost_rent_median_zori
     domain: cost_housing
     label: Median asking rent (Zillow ZORI)
+    phrasing: numeric
+    question_label: "Typical rent"
     source: zillow_research
     geo_level: county
     curve: lower_better
@@ -56,6 +60,8 @@ indicators:
   - id: cost_property_tax_rate
     domain: cost_housing
     label: Median property tax as share of home value
+    phrasing: numeric
+    question_label: "Property tax"
     source: census_acs5
     geo_level: county
     curve: lower_better
@@ -88,6 +94,8 @@ indicators:
   - id: climate_temp_winter_mean
     domain: climate_environment
     label: Mean winter temperature (Dec-Feb)
+    phrasing: numeric
+    question_label: "Winter temperature"
     source: noaa_normals
     geo_level: county
     curve: ideal_band
@@ -125,6 +133,8 @@ indicators:
   - id: climate_summer_high
     domain: climate_environment
     label: Mean summer daily high (Jun-Aug)
+    phrasing: numeric
+    question_label: "Summer highs"
     source: noaa_normals
     geo_level: county
     curve: ideal_band
@@ -160,6 +170,8 @@ indicators:
   - id: climate_annual_precip
     domain: climate_environment
     label: Annual precipitation
+    phrasing: numeric
+    question_label: "Rain"
     source: noaa_normals
     geo_level: county
     curve: ideal_band
@@ -171,6 +183,8 @@ indicators:
   - id: climate_annual_snowfall
     domain: climate_environment
     label: Annual snowfall
+    phrasing: numeric
+    question_label: "Snow"
     source: noaa_normals
     geo_level: county
     curve: ideal_point
@@ -274,6 +288,13 @@ indicators:
   - id: env_water_area_share
     domain: climate_environment
     label: Water area as share of the county (lakes, rivers, coast)
+    phrasing: categorical
+    question_label: "Lakes, rivers and coast"
+    phrases:
+      - "almost no water"
+      - "a river or a small lake"
+      - "substantial water"
+      - "on a big lake or the coast"
     source: usda_amenities
     geo_level: county
     curve: higher_better
@@ -284,10 +305,45 @@ indicators:
       of the county's area that is water. Coastal counties include their bays and nearshore
       water. Added 2026-10-15 for the atlas "Water & nature" factor, which the household chose.
 
+  - id: env_topographic_variation
+    domain: climate_environment
+    label: Land surface form (USDA topography code, 1 flat to 21 mountainous)
+    phrasing: categorical
+    question_label: "Mountains and terrain"
+    phrases:
+      - "flat, open country"
+      - "gently rolling"
+      - "hills and valleys"
+      - "mountainous"
+    source: usda_amenities
+    geo_level: county
+    curve: ideal_point
+    direction: personal
+    curve_params: {target: 11, tol: 8}
+    provisional: true
+    unit: code
+    notes: >
+      The topography component of the USDA natural amenities scale, published on its own.
+      Added at the household's request — they asked for "nature, beauty" and this is the
+      mountains-and-scenery half of it, alongside env_water_area_share.
+
+      `direction: personal` and an ideal_point rather than higher_better, because wanting
+      mountains is a preference and not a fact: plenty of people want flat and open. The
+      target is provisional and is replaced by the household's own answer. Unlike the
+      scale's climate components, terrain does not move, so the 1999 vintage is not a
+      weakness here.
+
   # ---------------- urban_form ----------------
   - id: form_population
     domain: urban_form
     label: Place population
+    phrasing: categorical
+    question_label: "Size of the place"
+    phrases:
+      - "a small town"
+      - "a small city"
+      - "a mid-size city"
+      - "a big city"
     source: census_acs5
     geo_level: place
     curve: ideal_band
@@ -304,6 +360,13 @@ indicators:
   - id: form_population_density
     domain: urban_form
     label: Population per square mile
+    phrasing: categorical
+    question_label: "How built up it is"
+    phrases:
+      - "spread out and rural"
+      - "small-town density"
+      - "properly urban"
+      - "dense city"
     source: census_acs5
     geo_level: place
     curve: ideal_band
@@ -320,6 +383,8 @@ indicators:
   - id: form_mean_commute
     domain: urban_form
     label: Mean travel time to work
+    phrasing: numeric
+    question_label: "Commute"
     source: census_acs5
     geo_level: place
     curve: lower_better
@@ -340,6 +405,13 @@ indicators:
   - id: air_europe_destinations
     domain: urban_form
     label: Nonstop European destinations from the nearest transatlantic airport
+    phrasing: categorical
+    question_label: "Flights to Europe"
+    phrases:
+      - "no direct flights to Europe"
+      - "a couple of European routes"
+      - "several European routes"
+      - "a major European gateway"
     source: bts_intl
     geo_level: county
     curve: higher_better
@@ -349,6 +421,8 @@ indicators:
   - id: air_europe_hub_distance
     domain: urban_form
     label: Distance to the nearest airport with European nonstops
+    phrasing: numeric
+    question_label: "Drive to a European flight"
     source: bts_intl
     geo_level: county
     curve: lower_better
@@ -378,6 +452,8 @@ indicators:
   - id: econ_unemployment_rate
     domain: career_economy
     label: Unemployment rate
+    phrasing: numeric
+    question_label: "Unemployment"
     source: chr_rwjf
     geo_level: county
     notes: >
@@ -399,6 +475,13 @@ indicators:
   - id: econ_industry_diversity
     domain: career_economy
     label: Industry diversity (inverse Herfindahl of employment by sector)
+    phrasing: categorical
+    question_label: "Range of work"
+    phrases:
+      - "one industry dominates"
+      - "a narrow local economy"
+      - "a reasonably mixed economy"
+      - "a broadly mixed economy"
     source: bls_qcew
     geo_level: county
     curve: higher_better
@@ -529,6 +612,8 @@ indicators:
   - id: health_life_expectancy
     domain: health_care
     label: Life expectancy at birth
+    phrasing: numeric
+    question_label: "Life expectancy"
     source: chr_rwjf
     geo_level: county
     curve: higher_better
@@ -538,6 +623,8 @@ indicators:
   - id: health_pcp_ratio
     domain: health_care
     label: Population per primary care physician
+    phrasing: numeric
+    question_label: "Doctors per person"
     source: chr_rwjf
     geo_level: county
     curve: lower_better
@@ -580,6 +667,13 @@ indicators:
   - id: safety_traffic_fatality_rate
     domain: safety
     label: Motor vehicle fatalities per 100,000
+    phrasing: categorical
+    question_label: "Road safety"
+    phrases:
+      - "safe roads"
+      - "fairly safe roads"
+      - "roughly average roads"
+      - "dangerous roads"
     source: nhtsa_fars
     geo_level: county
     curve: lower_better
@@ -614,6 +708,13 @@ indicators:
   - id: rec_park_access
     domain: recreation_lifestyle
     label: Share of population with park access
+    phrasing: categorical
+    question_label: "Parks nearby"
+    phrases:
+      - "hardly any park access"
+      - "patchy park access"
+      - "good park access"
+      - "parks close to nearly everyone"
     source: chr_rwjf
     geo_level: county
     curve: higher_better
@@ -630,6 +731,13 @@ indicators:
   - id: amen_food_drink_per10k
     domain: recreation_lifestyle
     label: Restaurants and bars per 10,000 residents
+    phrasing: categorical
+    question_label: "Places to eat and drink"
+    phrases:
+      - "very few places to eat"
+      - "a handful of restaurants"
+      - "a decent range of places"
+      - "lots of places to eat and drink"
     source: census_cbp
     geo_level: county
     curve: higher_better
@@ -640,6 +748,13 @@ indicators:
   - id: amen_arts_rec_per10k
     domain: recreation_lifestyle
     label: Arts, entertainment and recreation per 10,000 residents
+    phrasing: categorical
+    question_label: "Arts and things to do"
+    phrases:
+      - "almost nothing going on"
+      - "a little going on"
+      - "a decent amount going on"
+      - "a lot going on"
     source: census_cbp
     geo_level: county
     curve: higher_better
@@ -703,6 +818,8 @@ indicators:
   - id: comm_median_age
     domain: community_culture
     label: Median age
+    phrasing: numeric
+    question_label: "Typical age"
     source: census_acs5
     geo_level: place
     curve: ideal_band
@@ -725,6 +842,13 @@ indicators:
   - id: comm_social_associations
     domain: community_culture
     label: Membership associations per 10,000
+    phrasing: categorical
+    question_label: "Clubs and community life"
+    phrases:
+      - "few clubs or groups"
+      - "some community life"
+      - "an active community"
+      - "a very active community"
     source: chr_rwjf
     geo_level: county
     curve: higher_better

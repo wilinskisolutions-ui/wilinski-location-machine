@@ -26,7 +26,26 @@ BANK = ROOT / "questionnaire" / "bank.yaml"
 
 # How many attributes to show per trade-off. More than about six and the comparison stops
 # being a judgement and starts being a spreadsheet.
+# How many attributes to show per trade-off. More than about six and the comparison stops
+# being a judgement and starts being a spreadsheet.
 ATTRIBUTES_PER_TASK = 5
+
+# How far apart two places must stand nationally before an attribute is worth showing.
+#
+# The pair used to be drawn first and whatever fell out was displayed, so contrast was
+# uncontrolled. The first real respondent was asked to choose between "7.6 and 9.5 arts
+# venues per 10,000" and between "3.8 and 8.5 micrograms of PM2.5" — differences no person
+# can hold an opinion about — and his answers came out statistically indistinguishable from
+# random, which is exactly what unanswerable questions produce.
+MIN_PERCENTILE_GAP = 0.25
+
+# A categorical attribute must also move at least this many rungs on its phrase ladder.
+#
+# One rung is not enough. At one, the generator produced "on a big lake or the coast"
+# against "substantial water", and "safe roads" against "roughly average roads" — pairs
+# that are technically different and read as the same thing, which is the whole failure
+# being fixed.
+MIN_PHRASE_STEPS = 2
 
 
 def _fmt(value: float | None, unit: str | None) -> str:
@@ -45,13 +64,21 @@ def load_registry() -> dict[str, dict]:
 
 
 def wide_counties(features: Path = PROCESSED / "features.parquet") -> pl.DataFrame:
-    """One row per county, one column per indicator, joined to names."""
+    """One row per county, one column per indicator, joined to names.
+
+    National percentile comes across too, as `<indicator>__pct`. Both the phrase ladders
+    and the contrast rule work on national standing rather than raw units, because raw
+    units are not comparable across indicators: half a degree of winter temperature and
+    half a microgram of PM2.5 are not the same size of difference to anyone.
+    """
     f = pl.read_parquet(features).filter(pl.col("geo_level") == "county")
     wide = f.pivot(values="value", index="geo_id", on="indicator_id")
+    pct = f.pivot(values="percentile", index="geo_id", on="indicator_id")
+    pct = pct.rename({c: f"{c}__pct" for c in pct.columns if c != "geo_id"})
     universe = pl.read_parquet(PROCESSED / "universe.parquet").filter(
         pl.col("geo_level") == "county"
     )
-    return wide.join(
+    return wide.join(pct, on="geo_id", how="left").join(
         universe.select(["geo_id", "name", "state_usps", "population"]), on="geo_id", how="inner"
     )
 
@@ -105,6 +132,45 @@ def anchored_band_questions(spec: dict, wide: pl.DataFrame, registry: dict) -> l
     return out
 
 
+def _rung(percentile: float | None, phrases: list[str]) -> int | None:
+    """Which rung of a phrase ladder a national percentile falls on."""
+    if percentile is None or not phrases:
+        return None
+    index = int(percentile * len(phrases))
+    return max(0, min(index, len(phrases) - 1))
+
+
+def describe(entry: dict, value: float | None, percentile: float | None) -> str:
+    """How one attribute is shown to a person.
+
+    Numbers where people have real intuition, words where they do not. $420k, 49F and 22
+    minutes are all directly meaningful; "9.5 arts venues per 10,000 residents" and "8.5
+    micrograms per cubic metre" are not, and asking someone to trade the latter produces
+    noise rather than a preference.
+    """
+    if entry.get("phrasing") == "categorical":
+        phrases = entry.get("phrases") or []
+        rung = _rung(percentile, phrases)
+        if rung is not None:
+            return phrases[rung]
+    return _fmt(value, entry.get("unit"))
+
+
+def _separates(a: dict, b: dict, attr: str, entry: dict) -> bool:
+    """Whether these two places differ enough on this attribute to be worth asking about."""
+    pa, pb = a.get(f"{attr}__pct"), b.get(f"{attr}__pct")
+    if pa is None or pb is None:
+        return False
+    if abs(pa - pb) < MIN_PERCENTILE_GAP:
+        return False
+    if entry.get("phrasing") == "categorical":
+        phrases = entry.get("phrases") or []
+        ra, rb = _rung(pa, phrases), _rung(pb, phrases)
+        if ra is None or rb is None or abs(ra - rb) < MIN_PHRASE_STEPS:
+            return False  # both sides would read as the same words
+    return True
+
+
 def _dominates(a: dict, b: dict, attrs: list[str], registry: dict) -> bool:
     """True if a is at least as good as b on every attribute — such a pair teaches nothing."""
     better_or_equal = True
@@ -128,10 +194,17 @@ def choice_tasks(spec: dict, wide: pl.DataFrame, registry: dict, *, seed: int = 
     tasks: list[dict] = []
     attempts = 0
 
-    while len(tasks) < spec["tasks"] and attempts < spec["tasks"] * 200:
+    while len(tasks) < spec["tasks"] and attempts < spec["tasks"] * 400:
         attempts += 1
-        shown = rng.sample(attrs, min(ATTRIBUTES_PER_TASK, len(attrs)))
         a, b = rng.sample(pool, 2)
+
+        # Choose what to show from what actually differs between these two places, rather
+        # than picking attributes first and showing whatever values fall out.
+        separating = [x for x in attrs if _separates(a, b, x, registry[x])]
+        if len(separating) < ATTRIBUTES_PER_TASK:
+            continue
+        shown = rng.sample(separating, ATTRIBUTES_PER_TASK)
+
         if _dominates(a, b, shown, registry) or _dominates(b, a, shown, registry):
             continue
         tasks.append(
@@ -142,11 +215,22 @@ def choice_tasks(spec: dict, wide: pl.DataFrame, registry: dict, *, seed: int = 
                 "attributes": [
                     {
                         "indicator": attr,
-                        "label": registry[attr]["label"],
-                        "a": _fmt(a[attr], registry[attr].get("unit")),
-                        "b": _fmt(b[attr], registry[attr].get("unit")),
+                        # The registry label is written for the data catalogue
+                        # ("Membership associations per 10,000"). A question needs the
+                        # plain name.
+                        "label": registry[attr].get("question_label")
+                        or registry[attr]["label"],
+                        "a": describe(registry[attr], a[attr], a.get(f"{attr}__pct")),
+                        "b": describe(registry[attr], b[attr], b.get(f"{attr}__pct")),
                         "a_raw": a[attr],
                         "b_raw": b[attr],
+                        # National standing, carried alongside the raw value because
+                        # `higher_better` and `lower_better` curves score on percentile
+                        # while `ideal_band` and `ideal_point` score on the raw value.
+                        # Without both, a choice cannot be turned back into desirability
+                        # and the agreement check in elicit.py has nothing to work with.
+                        "a_pct": a.get(f"{attr}__pct"),
+                        "b_pct": b.get(f"{attr}__pct"),
                     }
                     for attr in shown
                 ],
