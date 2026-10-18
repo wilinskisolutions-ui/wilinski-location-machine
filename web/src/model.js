@@ -34,13 +34,17 @@ export function defaultSettings(core) {
 }
 
 // Settings saved by an older version gain any field added since, without losing theirs.
+// Weights and layers keep only what the site still offers: a layer that was taken off
+// (foreign-born share, 2026-10-18) must not linger in anyone's stored settings.
 export function normalizeSettings(core, saved) {
   const d = defaultSettings(core);
   if (!saved) return d;
+  const offered = (defaults, got) =>
+    Object.fromEntries(Object.entries(defaults).map(([k, v]) => [k, got && k in got ? got[k] : v]));
   return {
     ...d, ...saved,
-    weights: { ...d.weights, ...(saved.weights || {}) },
-    layers: { ...d.layers, ...(saved.layers || {}) },
+    weights: offered(d.weights, saved.weights),
+    layers: offered(d.layers, saved.layers),
   };
 }
 

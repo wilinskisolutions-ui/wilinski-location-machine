@@ -773,6 +773,24 @@ nothing that could fail. Tested with Netlify's own build locally. The migration 
 the same day; a probe with the anon key shows all six tables and four functions present
 and closed to signed-out visitors.
 
+**2026-10-18, later: four changes the household asked for after using the live site.**
+- **Start screen.** A first visit with accounts on opens on **Log in** / **Set up
+  account**, so a returning person on a new device signs in before any setup instead of
+  redoing the wizard. A small "look around without an account" link keeps the
+  this-device-only mode (the earlier "value before the wall" decision), which also stays
+  the only way in for anyone the built-in email cannot reach yet.
+- **Sign-in by emailed code, not link** (the household's choice over passwords). A link
+  opened in a phone's mail app lands in a browser that never asked for it and fails; a
+  code typed back works anywhere. "Log in" never creates an account; "Set up account"
+  does, then runs the wizard against the account. Needs the two Supabase email templates
+  edited to show `{{ .Token }}` (web/README.md, step 2).
+- **Foreign-born share is off the public site** (national origin is protected under the
+  Fair Housing Act). Stored settings drop any layer the site no longer offers. Advised
+  that religion is protected the same way; the household chose to keep religion and
+  political lean for now.
+- **"The numbers" became a folded "Nerd Stats" section**, and a dismissible floating
+  banner asks for a coffee, linking to the household's Stripe Payment Link.
+
 ---
 
 ## Data inventory

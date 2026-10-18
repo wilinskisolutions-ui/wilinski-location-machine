@@ -199,6 +199,11 @@ class TestPublicSite(unittest.TestCase):
         for layer in self.cfg["web"]["sensitive_layers"]:
             self.assertGreaterEqual(len(layer["directions"]), 2, layer["id"])
 
+    def test_public_site_offers_no_birthplace_layer(self):
+        # Taken off on 2026-10-18: national origin is protected under the Fair Housing Act.
+        indicators = {layer["indicator"] for layer in self.cfg["web"]["sensitive_layers"]}
+        self.assertNotIn("sens_foreign_born_share", indicators)
+
     @unittest.skipUnless(Path(FEATURES).exists(), "features not built")
     def test_winter_presets_reorder_cold_and_warm_places(self):
         import polars as pl
@@ -216,11 +221,10 @@ class TestPublicSite(unittest.TestCase):
 
         sv = build.sensitive_values(pl.read_parquet(FEATURES), self.cfg)
         county = sv[("county", "47187")]  # Williamson County TN
+        self.assertEqual(len(county), 2 * len(self.cfg["web"]["sensitive_layers"]))
         self.assertTrue(0 <= county[0] <= 1)   # religion percentile
-        self.assertIsNone(county[4])           # foreign-born is a town-level layer
-        town = sv[("place", "4727740")]        # Franklin TN
-        self.assertIsNone(town[0])
-        self.assertTrue(0 <= town[4] <= 1)
+        self.assertIsNotNone(county[3])        # political lean, raw margin
+        self.assertNotIn(("place", "4727740"), sv)  # Franklin TN: both layers are county-level
 
 
 class TestPublicSiteRanksByTheReportsRule(unittest.TestCase):

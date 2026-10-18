@@ -195,6 +195,9 @@ textarea { width: 100%; min-height: 84px; resize: vertical; background: var(--vo
 .bar-row .track i { display: block; height: 100%; border-radius: 2px; }
 .bar-row .v { font: 12px var(--data); text-align: right; color: var(--dim); }
 .bar-row.off { opacity: .45; }
+.nerd { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; background: var(--panel-2); margin-top: 14px; }
+.nerd summary { cursor: pointer; font: 600 12px var(--display); letter-spacing: .12em; text-transform: uppercase; color: var(--signal); }
+.nerd[open] summary { margin-bottom: 4px; }
 .facts { width: 100%; border-collapse: collapse; font-size: 13px; }
 .facts td { padding: 5px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
 .facts td:last-child { text-align: right; font-family: var(--data); white-space: nowrap; padding-left: 10px; }
@@ -310,4 +313,27 @@ body.wizard-open { overflow: hidden; }
   .wz-opts.two, .wz-opts.three { grid-template-columns: minmax(0, 1fr); }
   .wz-card { padding: 16px; }
   .account .btn { padding: 7px 9px; }
+}
+
+/* Start screen and sign-in by emailed code. */
+.wz-card.start h2 { margin-top: 6px; }
+.start-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 20px 0 12px; }
+.start-btns .btn { min-height: 52px; font-size: 14px; }
+.start-guest { text-align: center; margin: 4px 0 0; }
+.field input.code-in { background: var(--void); border: 1px solid var(--line-2); border-radius: 6px; padding: 10px 12px; width: 100%;
+  font: 500 22px var(--data); letter-spacing: .35em; text-align: center; }
+
+/* Donate banner: floats over the map, under the wizard and dialogs. */
+.donate { position: fixed; left: 50%; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 35;
+  display: flex; align-items: center; gap: 10px; width: max-content; max-width: calc(100vw - 32px);
+  padding: 8px 8px 8px 14px; background: rgba(10, 17, 32, .95); border: 1px solid var(--line-2); border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .45); font-size: 13px; line-height: 1.35; }
+.donate-ico { flex: none; color: var(--pick); }
+.donate p { margin: 0; }
+.donate a { color: var(--signal); font-weight: 600; white-space: nowrap; }
+.donate-x { flex: none; width: 30px; height: 30px; border: 0; border-radius: 6px; background: transparent; color: var(--dim); font-size: 20px; line-height: 1; }
+.donate-x:hover { background: rgba(255, 255, 255, .06); color: var(--ink); }
+@media (min-width: 1101px) {
+  /* Clear of the legend (bottom left of the map): bottom right of the map, two lines. */
+  .donate { left: auto; transform: none; right: calc(var(--right) + 16px); max-width: 400px; }
 }

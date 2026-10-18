@@ -1,14 +1,16 @@
 """The website, driven in a real browser as a first-time visitor.
 
-Covers the path a stranger takes: the wizard, the map it produces, opening an area and a
-town, and coming back later. Runs against the built site (`make web`) with no Supabase
-settings, so it exercises the this-device-only mode; accounts are covered by the
-row-level-security checks in web/supabase/tests.
+Covers the path a stranger takes: the start screen, the wizard, the map it produces,
+opening an area and a town, and coming back later. Runs against the production build, which
+has the Supabase project configured, with every request to Supabase answered in the test:
+nothing reaches the real project and no email is sent. Accounts themselves are covered by
+the row-level-security checks in web/supabase/tests.
 """
 
 from __future__ import annotations
 
 import functools
+import json
 import threading
 import unittest
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -24,6 +26,7 @@ except ImportError:  # pragma: no cover - optional dependency
 from wlm.paths import ROOT
 
 DIST = ROOT / "web" / "dist"
+DONATE_URL = "https://donate.stripe.com/aFa4gzdesgIOgOP3rw3wQ0v"
 
 
 def _chromium() -> str | None:
@@ -55,9 +58,22 @@ class TestFirstVisit(unittest.TestCase):
         cls.pw.stop()
         cls.server.shutdown()
 
-    def _page(self, width=1440, height=900):
+    def _page(self, width=1440, height=900, otp=None):
+        """otp: (status, body) Supabase answers a request for a sign-in code with."""
         ctx = self.browser.new_context(viewport={"width": width, "height": height})
         page = ctx.new_page()
+        page.otp_requests = []
+
+        def supabase(route):
+            url = route.request.url
+            if "/auth/v1/settings" in url:
+                return route.fulfill(json={"external": {"email": True, "google": False}})
+            if "/auth/v1/otp" in url and otp:
+                page.otp_requests.append(json.loads(route.request.post_data or "{}"))
+                return route.fulfill(status=otp[0], json=otp[1])
+            return route.abort()
+
+        page.route("**/*.supabase.co/**", supabase)
         errors: list[str] = []
         page.on("pageerror", lambda e: errors.append(str(e)))
         page.on("console", lambda m: errors.append(m.text) if m.type == "error" and "fonts" not in m.text and "ERR_FAILED" not in m.text else None)
@@ -68,6 +84,7 @@ class TestFirstVisit(unittest.TestCase):
     def _wizard(self, page):
         page.goto(self.url)
         page.wait_for_selector("#wizard:not([hidden]) .wz-card", timeout=30000)
+        page.click("#st-guest")  # the start screen: look around without an account
         page.click('.wz-opt[data-value="couple"]')
         page.click("#wz-next")
         page.fill("#wz-home", "Harrisburg")
@@ -123,12 +140,85 @@ class TestFirstVisit(unittest.TestCase):
         finally:
             ctx.close()
 
+    def test_start_screen_offers_log_in_and_set_up(self):
+        ctx, page, errors = self._page(390, 844, otp=(200, {}))
+        try:
+            page.goto(self.url)
+            page.wait_for_selector("#st-login", timeout=30000)
+            self.assertTrue(page.is_visible("#st-setup"))
+            page.click("#st-login")
+            page.fill("#cf-email-in", "someone@example.com")
+            page.click("#cf-email button[type=submit]")
+            page.wait_for_selector("#cf-code-in")
+            self.assertEqual(page.otp_requests[0]["email"], "someone@example.com")
+            self.assertFalse(page.otp_requests[0]["create_user"], "Log in must not create accounts")
+            page.fill("#cf-code-in", "12 34-56")
+            self.assertEqual(page.input_value("#cf-code-in"), "123456")
+            page.click("#cf-other")
+            page.click("#st-back")
+            page.click("#st-setup")
+            page.fill("#cf-email-in", "new@example.com")
+            page.click("#cf-email button[type=submit]")
+            page.wait_for_selector("#cf-code-in")
+            self.assertTrue(page.otp_requests[1]["create_user"], "Set up account must create one")
+            self.assertEqual(errors, [])
+        finally:
+            ctx.close()
+
+    def test_log_in_with_an_unknown_email_says_what_to_do(self):
+        ctx, page, _ = self._page(otp=(422, {"code": "otp_disabled", "msg": "Signups not allowed for otp"}))
+        try:
+            page.goto(self.url)
+            page.click("#st-login", timeout=30000)
+            page.fill("#cf-email-in", "nobody@example.com")
+            page.click("#cf-email button[type=submit]")
+            page.wait_for_function("document.querySelector('#cf-msg').textContent.includes('Set up account')")
+            self.assertEqual(page.locator("#cf-code-in").count(), 0)
+        finally:
+            ctx.close()
+
+    def test_nerd_stats_start_folded_and_stay_open(self):
+        ctx, page, errors = self._page()
+        try:
+            self._wizard(page)
+            page.click('#tab-places [data-pin="p-4727740"]')
+            page.wait_for_selector(".l-rtowns path", timeout=15000)
+            page.click("#readout [data-town]")
+            summary = page.locator("#nerd summary")
+            self.assertEqual(summary.inner_text().strip().lower(), "click here to view nerd stats")
+            self.assertFalse(page.is_visible("#nerd table.facts"))
+            summary.click()
+            self.assertTrue(page.is_visible("#nerd table.facts"))
+            page.click('.status button[data-s="want"]')  # re-renders the readout
+            self.assertTrue(page.is_visible("#nerd table.facts"), "the stats folded up again")
+            self.assertEqual(errors, [])
+        finally:
+            ctx.close()
+
+    def test_donate_banner_links_out_and_can_be_hidden(self):
+        ctx, page, _ = self._page(390, 844)
+        try:
+            self._wizard(page)
+            banner = page.locator("#donate")
+            self.assertIn("This project is entirely free", banner.inner_text())
+            self.assertEqual(banner.locator("a").get_attribute("href"), DONATE_URL)
+            self.assertEqual(banner.locator("a").inner_text(), "Donate here")
+            self.assertEqual(banner.locator("svg.donate-ico").count(), 1)
+            self.assertFalse(page.evaluate("document.documentElement.scrollWidth > window.innerWidth"))
+            page.click("#donate .donate-x")
+            self.assertEqual(page.locator("#donate").count(), 0)
+            page.reload()
+            page.wait_for_selector("#loading", state="hidden", timeout=30000)
+            self.assertEqual(page.locator("#donate").count(), 0, "a hidden banner came back")
+        finally:
+            ctx.close()
+
     def test_sensitive_layers_start_switched_off(self):
         ctx, page, _ = self._page()
         try:
             self._wizard(page)
             page.click('.left .tabs [data-tab="weights"]')
-            for layer in ("religion", "politics", "foreign"):
+            for layer in ("religion", "politics"):
                 self.assertFalse(page.is_checked(f'#tab-weights input[data-on="{layer}"]'))
                 self.assertTrue(page.is_disabled(f"#w-{layer}"))
         finally:
