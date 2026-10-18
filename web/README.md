@@ -55,28 +55,30 @@ the row-level security in the migration decides what anyone can read or write.
 
 ## Netlify
 
-**First deploy, by hand:** build `dist/` (or use the zip from the session), then drag the
-folder onto app.netlify.com/drop. Netlify gives the site an address; put that address in
-Supabase step 2.
+`.github/workflows/web.yml` rebuilds the data, runs every test and builds the site on
+every push to `main`, and monthly so prices stay current. It then force-pushes the
+finished site, as a single commit, to the **`site`** branch. Netlify publishes that branch
+as it is: no build, and no Netlify token stored anywhere.
 
-**After that, automatically:** `.github/workflows/web.yml` rebuilds the data, runs every
-test, builds the site and deploys it on every push to `main`, and monthly so prices stay
-current. It needs, in GitHub → Settings → Secrets and variables → Actions:
+One-time setting: Netlify → your site → Site configuration → Build & deploy → Continuous
+deployment → Branches and deploy contexts → **Configure** → Production branch: `site` →
+Save. Then Deploys → Trigger deploy → Deploy site, once; after that every publish deploys
+by itself.
 
-| Kind | Name | Where to find it |
-|---|---|---|
-| Secret | `NETLIFY_AUTH_TOKEN` | Netlify → User settings → Applications → Personal access tokens |
-| Variable | `NETLIFY_SITE_ID` | Netlify → your site → Site configuration → Site ID |
-| Variable | `VITE_DONATE_URL` | optional: a Stripe Payment Link for the Support button |
+Optional: a repository variable `VITE_DONATE_URL` (GitHub → Settings → Secrets and
+variables → Actions → Variables), a Stripe Payment Link for the Support button.
 
-Netlify never builds this repository itself: `netlify.toml` at the repo root cancels
-its git-triggered builds. Building the data needs about a gigabyte of downloads, which the
-GitHub workflow caches and Netlify's builder would not, and without that file a connected
-repository gets published as-is, with no index.html at its root ("Page not found").
+Netlify never builds this repository's code: building the data needs about a gigabyte of
+downloads, which the GitHub workflow caches and Netlify's builder would not. The `site`
+branch carries its own `netlify.toml` (from `netlify.site.toml`) that only publishes. The
+one at the repo root cancels builds of every other branch, because a connected repository
+otherwise gets published as-is, with no index.html at its root ("Page not found").
+A deploy started by hand in Netlify while the production branch is still `main` fails
+("Deploy directory 'web/dist' does not exist") and leaves the live site as it was.
 `public/_headers` sets caching and a Content-Security-Policy.
 
 If the live site ever shows "Page not found": Netlify → Deploys → open the last good
-deploy (a manual upload or a "Deployed by GitHub Actions" one) → **Publish deploy**.
+deploy → **Publish deploy**.
 
 ## Tests
 
