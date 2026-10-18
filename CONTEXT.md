@@ -762,6 +762,17 @@ argument to `influence_scale` (default behaviour unchanged, tested). "More" and 
 foreign-born share get identical stretches: percentiles are uniform, so p and 1-p have
 the same spread. That is arithmetic, not a bug.
 
+**2026-10-18: the site is published from a `site` branch, not with a Netlify token.** The
+household asked for something simpler than creating a Netlify token and storing it in
+GitHub. The workflow now force-pushes the finished site, one commit, to `site`, and
+Netlify's production branch is set to `site`: one setting in Netlify, no credential of
+theirs anywhere. A deploy the household started by hand in Netlify had failed with
+"Deploy directory 'web/dist' does not exist", because a manual deploy skips `ignore`;
+it left the live site untouched, and the `site` branch's own `netlify.toml` builds
+nothing that could fail. Tested with Netlify's own build locally. The migration was run
+the same day; a probe with the anon key shows all six tables and four functions present
+and closed to signed-out visitors.
+
 ---
 
 ## Data inventory

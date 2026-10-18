@@ -1,11 +1,13 @@
-# Build the data, test everything, build the website, and (on main, once configured)
-# deploy it to Netlify. Runs on every pull request, on main, and monthly so prices stay
-# current. The Supabase URL and anon key come from web/.env.production (public by design).
+# Build the data, test everything, build the website, and (on main) publish it. Runs on
+# every pull request, on main, and monthly so prices stay current. The Supabase URL and
+# anon key come from web/.env.production (public by design).
 #
-# Repository settings this uses (Settings -> Secrets and variables -> Actions):
-#   secrets    NETLIFY_AUTH_TOKEN   Netlify -> User settings -> Applications -> New access token
-#   variables  NETLIFY_SITE_ID      Netlify -> your site -> Site configuration -> Site ID
-#              VITE_DONATE_URL      optional "Support" link (a Stripe Payment Link)
+# Publishing: on main, the finished site is force-pushed as a single commit to the `site`
+# branch, and Netlify (Production branch: site) publishes that branch as it is. Netlify
+# never builds anything and holds no token of ours.
+#
+# Optional repository variable (Settings -> Secrets and variables -> Actions -> Variables):
+#   VITE_DONATE_URL   "Support" link (a Stripe Payment Link)
 name: web
 
 on:
@@ -24,9 +26,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 75
-    env:
-      # At job level so the deploy step's `if` can see whether it is set.
-      NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+    permissions:
+      contents: write   # to push the built site to the `site` branch
     steps:
       - uses: actions/checkout@v4
 
@@ -82,6 +83,19 @@ jobs:
           path: web/dist
           retention-days: 14
 
-      - name: Deploy to Netlify
-        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && env.NETLIFY_AUTH_TOKEN != ''
-        run: npx --yes netlify-cli@27.10.2 deploy --prod --dir web/dist --site "${{ vars.NETLIFY_SITE_ID }}" --message "${{ github.sha }}"
+      # One commit, no history: each publish replaces the last, so the branch never grows.
+      - name: Publish the site branch
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          site="$RUNNER_TEMP/site"
+          cp -r web/dist "$site"
+          cp web/netlify.site.toml "$site/netlify.toml"
+          cd "$site"
+          git init -q -b site
+          git add -A
+          git -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -q -m "Site built from ${GITHUB_SHA}"
+          git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" site
