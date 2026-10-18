@@ -15,6 +15,7 @@ export function createApp({ model, store, onEditSetup }) {
   const st = {
     store, pins: [], towns: new Map(), region: null, regionTowns: [], town: null,
     colorBy: "fit", showZips: false, geo: new Map(), k: 1, ready: false,
+    nerdOpen: false, // the town readout re-renders often; keep the stats table open across it
   };
 
   // ------------------------------------------------------------------ prices
@@ -493,9 +494,10 @@ export function createApp({ model, store, onEditSetup }) {
         <section><h3>Your status</h3><div class="status" role="group" aria-label="Status">${STATUSES.map(([k, l]) => `<button type="button" data-s="${k}" aria-pressed="${mine.status === k}">${l}</button>`).join("")}</div></section>
         <section><h3><label for="note">Notes</label></h3><textarea id="note" placeholder="What you saw, who you met, what to check next time">${esc(mine.note || "")}</textarea><p class="note-saved" id="note-saved"></p></section>
         <section><h3>Why it scores this way</h3>${factorBars(p)}</section>
-        <section><h3>The numbers</h3>${factsTable(p)}</section>
+        <details class="nerd" id="nerd" ${st.nerdOpen ? "open" : ""}><summary>Click here to view Nerd Stats</summary>${factsTable(p)}</details>
         ${sourcesLine(p)}`;
       $("#back-region").addEventListener("click", () => { st.town = null; L.rtowns.selectAll("path").classed("sel", false); renderReadout(); });
+      $("#nerd").addEventListener("toggle", (e) => { st.nerdOpen = e.target.open; });
       box.querySelectorAll(".status button").forEach((btn) => btn.addEventListener("click", () => {
         const cur = (st.towns.get(p.id) || {}).status;
         saveTown(p.id, { status: cur === btn.dataset.s ? null : btn.dataset.s });

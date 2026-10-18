@@ -55,12 +55,19 @@ select test.expect_error($$select public.pins_limit()$$, 'permission denied|trig
 -- Updates and deletes against A's rows silently touch nothing under RLS; prove A's data survived below.
 update public.town_notes set note = 'hijacked' where household_id = :'hid_a';
 delete from public.pins where household_id = :'hid_a';
+update public.households set mode = 'single' where id = :'hid_a';
 select public.create_household('single') as hid_b \gset
+-- The site sets a new account's mode after its wizard ("Set up account" makes the map first).
+update public.households set mode = 'couple' where id = :'hid_b';
+select test.expect_count(format($$select * from public.households where id = %L and mode = 'couple'$$, :'hid_b'), 1);
+select test.expect_error(format($$update public.households set mode = 'trio' where id = %L$$, :'hid_b'), 'check constraint');
+update public.households set mode = 'single' where id = :'hid_b';
 
 \echo '3. A invites a partner; B (already has a map) is refused; C joins'
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000a', false) \gset
 select test.expect_count($$select * from public.town_notes where note = 'Main St on a Saturday'$$, 1);
 select test.expect_count('select * from public.pins', 1);
+select test.expect_count(format($$select * from public.households where id = %L and mode = 'couple'$$, :'hid_a'), 1);
 select test.expect_error(format($$update public.households set created_by = auth.uid() where id = %L$$, :'hid_a'), 'permission denied');
 select public.create_invite(:'hid_a') as tok \gset
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000b', false) \gset

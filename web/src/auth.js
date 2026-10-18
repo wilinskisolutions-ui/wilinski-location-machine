@@ -45,6 +45,12 @@ export function providers() {
 // Supabase's own wording, turned into something a visitor can act on.
 export function friendlyError(err) {
   const m = String(err?.message || err || "");
+  if (/signups? not allowed|user not found/i.test(m)) {
+    return "No account uses that email yet. Go back and choose Set up account.";
+  }
+  if (/expired|invalid.*(token|otp|code)|(token|otp).*invalid/i.test(m)) {
+    return "That code is wrong or has expired. Use the newest email, or send a new code.";
+  }
   if (/not authori[sz]ed/i.test(m)) {
     return "This site can't send sign-in emails to that address yet: it is still in a private test. Ask the person who shared it with you to add you.";
   }
@@ -55,10 +61,23 @@ export function friendlyError(err) {
   return m || "Something went wrong. Try again in a moment.";
 }
 
-export async function sendMagicLink(email) {
+// Sign-in is by a code emailed to the visitor, typed back into this page. A code works
+// even when the email opens in another browser (usual on phones), where a link would land
+// in a browser that never asked for it. The email also carries a link, which still works
+// on the same device. `create`: whether an address with no account may make one.
+export async function sendCode(email, { create = true } = {}) {
   const sb = await supabase();
-  const { error } = await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: returnUrl() } });
+  const { error } = await sb.auth.signInWithOtp({
+    email, options: { shouldCreateUser: create, emailRedirectTo: returnUrl() },
+  });
   if (error) throw error;
+}
+
+export async function verifyCode(email, code) {
+  const sb = await supabase();
+  const { data, error } = await sb.auth.verifyOtp({ email, token: code, type: "email" });
+  if (error) throw error;
+  return data.user;
 }
 
 export async function signInWithGoogle() {
@@ -94,6 +113,13 @@ export async function createHousehold(mode) {
   const { data, error } = await sb.rpc("create_household", { p_mode: mode === "couple" ? "couple" : "single" });
   if (error) throw error;
   return data;
+}
+
+export async function setHouseholdMode(householdId, mode) {
+  const sb = await supabase();
+  const { error } = await sb.from("households")
+    .update({ mode: mode === "couple" ? "couple" : "single" }).eq("id", householdId);
+  if (error) throw error;
 }
 
 export async function createInvite(householdId) {

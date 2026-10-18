@@ -1,17 +1,19 @@
 // Boot: load the data, then decide what the visitor sees.
 //
-//   first visit            -> setup wizard -> their map, saved on this device
+//   first visit            -> start screen: Log in, or Set up account (email code, then
+//                             the setup wizard), or look around without an account
 //   map on this device     -> their map, with "Save your map" (sign-up) in the header
 //   signed in              -> their household's map from Supabase, live for a couple
-//   ?invite=<token>        -> sign in, join the partner's household
+//   ?invite=<token>        -> sign in with an email code, join the partner's household
 //
-// The account wall sits after the wizard by design: a visitor sees what the Atlas does
-// for them before being asked for anything.
+// Without Supabase settings (the artifact preview) there is no start screen: the wizard
+// runs straight away and the map stays on this device.
 import "./styles.css";
 import { createApp } from "./app.js";
 import * as auth from "./auth.js";
 import { defaultSettings, Model, normalizeSettings } from "./model.js";
 import { LocalStore, RemoteStore } from "./store.js";
+import { codeForm, startScreen } from "./signin.js";
 import { esc } from "./util.js";
 import { closeWizard, runWizard } from "./wizard.js";
 
@@ -37,46 +39,57 @@ function modal(title, html, wire) {
   return close;
 }
 
-function signInModal(reason) {
+function signInModal() {
   modal("Save your map", `
-    <p class="small muted">${esc(reason || "Create a free account to keep your map, use it on your phone, and share it with your partner. No password: we email you a sign-in link.")}</p>
-    <form id="md-email" class="field"><label for="md-email-in">Email</label>
-      <input id="md-email-in" type="email" required autocomplete="email" placeholder="you@example.com">
-      <button type="submit" class="btn primary">Email me a sign-in link</button></form>
-    <p class="md-or" hidden>or</p>
-    <button type="button" class="btn" id="md-google" hidden>Continue with Google</button>
-    <p class="note-saved" id="md-msg" role="status"></p>
+    <p class="small muted">Create a free account to keep your map, use it on your phone, and share it with your partner. Already have one? Use the same email. No password: we email you a code.</p>
+    <div id="md-form"></div>
     <p class="small muted">Your map stays on this device until you sign in, then moves to your account. We store your settings, pins and notes, nothing else. You can delete it all at any time.</p>`,
-  (m) => {
-    m.querySelector("#md-email").addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const email = m.querySelector("#md-email-in").value.trim();
-      const msg = m.querySelector("#md-msg");
-      msg.textContent = "Sending…";
-      try { await auth.sendMagicLink(email); msg.textContent = `Check ${email} for a sign-in link. Open it on this device to keep the map you just made.`; }
-      catch (err) { msg.textContent = auth.friendlyError(err); }
-    });
-    m.querySelector("#md-google").addEventListener("click", async () => {
-      try { await auth.signInWithGoogle(); } catch (err) { m.querySelector("#md-msg").textContent = auth.friendlyError(err); }
-    });
-    auth.providers().then((p) => {
-      m.querySelector("#md-google").hidden = !p.google;
-      m.querySelector(".md-or").hidden = !p.google;
+  (m, close) => {
+    codeForm(m.querySelector("#md-form"), { create: true }).then(async (user) => {
+      close();
+      try { await enterAccount(user, null); }
+      catch (err) { modal("Could not open your account", `<p class="small">${esc(err.message)}</p>`); }
     });
   });
+}
+
+// ------------------------------------------------------------------ donate banner
+// Floats over the map until dismissed; a dismissal holds on this device for 30 days. The
+// same link stays in the menus. Hidden entirely when the build has no donate link.
+const BANNER_KEY = "atlas.donate.hidden";
+const COFFEE = `<svg class="donate-ico" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M4 10h12v4.5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5V10z"/><path d="M16 11.5h1.5a2.5 2.5 0 0 1 0 5H16"/>
+  <path d="M8 2.8c-.8.9.8 1.8 0 2.7M11.5 2.8c-.8.9.8 1.8 0 2.7"/><path d="M3 21.5h14"/></svg>`;
+
+function donateBanner() {
+  if (!DONATE_URL) return;
+  try { if (Date.now() - Number(localStorage.getItem(BANNER_KEY) || 0) < 30 * 864e5) return; }
+  catch { /* storage blocked: show the banner */ }
+  const b = document.createElement("aside");
+  b.className = "donate";
+  b.id = "donate";
+  b.setAttribute("aria-label", "Support this project");
+  b.innerHTML = `${COFFEE}<p>This project is entirely free, feel free to buy me a coffee. <a href="${esc(DONATE_URL)}" target="_blank" rel="noopener">Donate here</a></p>
+    <button type="button" class="donate-x" aria-label="Hide this banner">×</button>`;
+  b.querySelector(".donate-x").addEventListener("click", () => {
+    b.remove();
+    try { localStorage.setItem(BANNER_KEY, String(Date.now())); } catch { /* it returns next visit */ }
+  });
+  document.body.appendChild(b);
 }
 
 // ------------------------------------------------------------------ header account area
 function renderAccount(user) {
   const box = $("#account");
-  const donate = DONATE_URL ? `<a class="btn" href="${esc(DONATE_URL)}" target="_blank" rel="noopener">Support</a>` : "";
+  const donate = DONATE_URL ? `<a class="btn" href="${esc(DONATE_URL)}" target="_blank" rel="noopener">Support this project</a>` : "";
   if (!user) {
-    box.innerHTML = `${donate}${auth.configured ? `<button type="button" class="btn primary" id="acct-save">Save your map</button>` : ""}
+    box.innerHTML = `${auth.configured ? `<button type="button" class="btn primary" id="acct-save">Save your map</button>` : ""}
       <button type="button" class="btn" id="acct-menu" aria-haspopup="true">Menu</button>`;
     $("#acct-save")?.addEventListener("click", () => signInModal());
     $("#acct-menu").addEventListener("click", () => modal("This map", `
       <div class="md-list">
         <button type="button" class="btn" id="mm-setup">Redo setup</button>
+        ${donate}
         <button type="button" class="btn danger" id="mm-reset">Start over (clears this device)</button>
       </div>`, (m, close) => {
       m.querySelector("#mm-setup").addEventListener("click", () => { close(); editSetup(); });
@@ -84,12 +97,13 @@ function renderAccount(user) {
     }));
     return;
   }
-  box.innerHTML = `${donate}<button type="button" class="btn" id="acct-menu" aria-haspopup="true">${esc((user.email || "Account").split("@")[0])}</button>`;
+  box.innerHTML = `<button type="button" class="btn" id="acct-menu" aria-haspopup="true">${esc((user.email || "Account").split("@")[0])}</button>`;
   $("#acct-menu").addEventListener("click", () => modal("Your account", `
     <p class="small muted">Signed in as ${esc(user.email || "")}. ${household?.mode === "couple" ? "This is a shared map for two." : "This map is just yours."}</p>
     <div class="md-list">
       <button type="button" class="btn" id="mm-setup">Redo setup</button>
       ${household?.mode === "couple" ? `<button type="button" class="btn" id="mm-invite">Invite your partner</button>` : `<button type="button" class="btn" id="mm-couple">Make this a couple's map</button>`}
+      ${donate}
       <button type="button" class="btn" id="mm-out">Sign out</button>
       <button type="button" class="btn danger" id="mm-delete">Delete my account</button>
     </div>
@@ -148,7 +162,13 @@ async function editSetup() {
   closeWizard();
 }
 
+// The loading screen stays up until there is something to show: a returning visitor's map
+// arrives only after the sign-in check (which loads the Supabase library) and, signed in,
+// a round trip to Supabase; until then the map would be empty.
+const ready = () => { $("#loading").hidden = true; };
+
 async function firstRun(store) {
+  ready();
   const result = await runWizard(model, { settings: defaultSettings(model.core), pins: [] });
   await saveAll(store, result);
   return { settings: result.settings, pins: result.pins, towns: {} };
@@ -182,14 +202,23 @@ async function enterAccount(user, inviteToken) {
   }
   app.setStore(remote);
   let data = await remote.load();
-  if (!data.settings) data = await firstRun(remote);
+  if (!data.settings) {
+    data = await firstRun(remote);
+    // Account first ("Set up account"): the household was made before the wizard asked
+    // who's moving, so take its answer now.
+    if (data.settings.mode !== household.mode) {
+      await auth.setHouseholdMode(household.id, data.settings.mode);
+      household.mode = data.settings.mode;
+    }
+  }
   data.settings = normalizeSettings(model.core, data.settings);
   app.show(data);
+  ready();
   closeWizard();
   renderAccount(user);
   unsubscribe();
   unsubscribe = remote.subscribe(async () => {
-    const editing = document.activeElement && ["note", "md-email-in"].includes(document.activeElement.id);
+    const editing = document.activeElement && ["note", "cf-email-in", "cf-code-in"].includes(document.activeElement.id);
     if (editing || document.activeElement?.type === "range") return;
     const fresh = await remote.load();
     fresh.settings = normalizeSettings(model.core, fresh.settings);
@@ -212,8 +241,8 @@ async function boot() {
   model = new Model(core);
   app = createApp({ model, store: local, onEditSetup: editSetup });
   await app.start(us);
-  $("#loading").hidden = true;
 
+  donateBanner();
   const inviteToken = new URLSearchParams(window.location.search).get("invite");
   const user = auth.configured ? await auth.currentUser() : null;
   if (user) {
@@ -221,22 +250,27 @@ async function boot() {
     await enterAccount(user, inviteToken);
     return;
   }
-  // An invited partner joins an existing map: no wizard, straight to signing in.
-  if (inviteToken && auth.configured) {
-    app.show({ settings: defaultSettings(core), pins: [], towns: {} });
-    renderAccount(null);
-    signInModal("Your partner invited you to share their map. Sign in, or create an account, to join it. The link brings you back here.");
-    return;
-  }
   let data = local.load();
+  // A partner's invite always signs in (no wizard: they join an existing map). Otherwise
+  // the start screen shows until this device has a map of its own.
+  if (auth.configured && (inviteToken || !data.settings?.done)) {
+    ready();
+    const start = await startScreen({ invited: Boolean(inviteToken) });
+    if (start.user) {
+      await enterAccount(start.user, inviteToken);
+      return;
+    }
+  }
   if (!data.settings?.done) data = await firstRun(local);
   data.settings = normalizeSettings(core, data.settings);
   app.show(data);
+  ready();
   closeWizard();
   renderAccount(null);
 }
 
 boot().catch((e) => {
+  closeWizard();
   $("#loading").hidden = false;
   $("#loading").textContent = "Could not load the map: " + e.message;
 });

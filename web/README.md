@@ -41,16 +41,29 @@ the row-level security in the migration decides what anyone can read or write.
    appears, choose **Run this query** (the only deletes are inside the delete-my-account
    function). It is safe to run again if anything goes wrong the first time.
    Success looks like "Success. No rows returned".
-2. **Where sign-in links come back to.** Authentication → **URL Configuration**:
-   - Site URL: your Netlify address, e.g. `https://wilinski-atlas.netlify.app`
-   - Redirect URLs: the same address, plus `http://localhost:5173/**` for development.
-3. **Email that reaches people.** Supabase's built-in email only delivers to members of
+2. **Put the code in the sign-in emails.** People sign in by typing a code the site emails
+   them. Supabase's default emails carry only a link, so in Authentication → **Emails** →
+   Templates, edit both **Magic Link** (existing accounts) and **Confirm signup** (new
+   ones) so the body shows `{{ .Token }}`, for example:
+
+   ```html
+   <h2>Your Wilinski Atlas code</h2>
+   <p>Type this code on the site to sign in: <strong>{{ .Token }}</strong></p>
+   <p>It works once and expires in an hour. If you didn't ask for it, ignore this email.</p>
+   ```
+   Subject: `Your Wilinski Atlas code`. Without this the email still has a link, which
+   works only when opened on the same device and browser that asked for it.
+3. **Where an email's link comes back to.** Authentication → **URL Configuration**:
+   - Site URL: `https://wilinskiatlas.netlify.app`
+   - Redirect URLs: the same address with `/**`, plus `http://localhost:5173/**` for
+     development.
+4. **Email that reaches people.** Supabase's built-in email only delivers to members of
    your Supabase team, at about 2 emails an hour. Anyone else gets "Email address not
    authorized" (the site explains this to them). Two ways forward:
    - Testing with a few people: add them under Organization → Team.
    - Anyone at all: Authentication → Emails → **SMTP Settings**, using a sender such as
      Resend or Brevo (both have free tiers). Use an address on a domain you own.
-4. **Google sign-in (optional, later).** Authentication → Providers → Google, with a
+5. **Google sign-in (optional, later).** Authentication → Providers → Google, with a
    Google Cloud OAuth client. The site shows the Google button only once it is on.
 
 ## Netlify
@@ -65,8 +78,10 @@ deployment → Branches and deploy contexts → **Configure** → Production bra
 Save. Then Deploys → Trigger deploy → Deploy site, once; after that every publish deploys
 by itself.
 
-Optional: a repository variable `VITE_DONATE_URL` (GitHub → Settings → Secrets and
-variables → Actions → Variables), a Stripe Payment Link for the Support button.
+Donations: the floating "buy me a coffee" banner and the menus' "Support this project"
+link go to `VITE_DONATE_URL`, a Stripe Payment Link set in `.env.production`. A repository
+variable of the same name (GitHub → Settings → Secrets and variables → Actions →
+Variables) overrides it without a code change.
 
 Netlify never builds this repository's code: building the data needs about a gigabyte of
 downloads, which the GitHub workflow caches and Netlify's builder would not. The `site`
@@ -101,7 +116,7 @@ roles), which is what the first version of the migration tripped over.
   `config/sources.yaml` as free for non-commercial use with attribution. Read the current
   terms at zillow.com/research/data before taking money for anything. HUD's Small Area
   Fair Market Rents are a public-domain fallback; they run lower than market asking rents.
-- **Sensitive layers.** Religion, political lean and foreign-born share are opt-in sliders
+- **Sensitive layers.** Religion and political lean are opt-in sliders
   with a visitor-chosen direction that never hide a place. Steering home-seekers by a
   protected characteristic is illegal under the Fair Housing Act; get a fair-housing
   lawyer's read before opening the site beyond friends and family.

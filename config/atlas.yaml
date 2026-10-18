@@ -187,6 +187,8 @@ web:
   # choice and never assumed, and no layer ever hides a place outright. The household
   # chose to keep these for the public site on 2026-10-17, against the advice to drop
   # them; the fair-housing review before any public launch is recorded in CONTEXT.md.
+  # Foreign-born share was removed on 2026-10-18 (national origin is a protected class);
+  # religion stays by the household's choice, though it is protected the same way.
   sensitive_layers:
     - id: religion
       indicator: sens_religious_adherence
@@ -199,8 +201,3 @@ web:
       blurb: County two-party presidential margin, most recent election.
       directions: {higher: Leans Republican, lower: Leans Democratic, even: Close to even}
       even: {target: 0, tol: 0.25}
-    - id: foreign
-      indicator: sens_foreign_born_share
-      label: Residents born abroad
-      blurb: Share of the town's residents born outside the US (ACS 2019-2023).
-      directions: {higher: More, lower: Fewer}
