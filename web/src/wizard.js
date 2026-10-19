@@ -1,19 +1,21 @@
-// The setup wizard. Runs before any account exists; its result is a settings object and
-// a list of pinned areas, saved to this browser until the visitor chooses to sign up.
-import { climateChoices, presetFor, startingWeights } from "./weights.js";
+// The setup wizard. Its result is a settings object and a list of pinned areas, saved to
+// this browser or, for an account, to Supabase. The visitor first picks a length: five
+// questions, or about fifteen (questions.js); every answer sets where the weights start.
+import { answersFromLegacy, chosenOptions, PATHS, QUESTIONS, stepsFor } from "./questions.js";
+import { climateChoices, presetFor, weightsFrom } from "./weights.js";
 import { debounce, esc } from "./util.js";
 
-const STEPS = ["who", "home", "money", "life", "winters", "weights", "picks"];
-const STEP_TITLES = {
-  who: "Who's moving?",
+// Titles of the screens that are not plain questions.
+const SCREEN_TITLES = {
+  depth: "How do you want to set this up?",
   home: "Where do you live now?",
   money: "What can you spend?",
-  life: "A few facts about your life",
-  winters: "What winters do you want?",
-  weights: "What matters most?",
-  picks: "Which areas are on your list?",
+  winters: "What should January feel like?",
+  weights: "Here's what your answers add up to",
+  picks: "Any places already on your list?",
 };
 const MAX_PICKS = 5;
+const ADVANCE_MS = 220; // a tapped answer shows as chosen for a moment, then moves on
 
 // Close the wizard. On completion the caller closes it once the new map is drawn, so the
 // visitor never sees an empty map between the last step and their result.
@@ -28,9 +30,11 @@ export function closeWizard() {
 export function runWizard(model, { settings, pins, cancellable = false }) {
   const root = document.getElementById("wizard");
   const s = structuredClone(settings);
+  if (!s.answers) s.answers = s.done ? answersFromLegacy(s) : {};
   let picks = structuredClone(pins || []);
   let step = 0;
-  let weightsTouched = s.done; // a returning visitor keeps their own weights
+  let weightsTouched = false; // set once the visitor moves a slider on the review screen
+  let advance = null;
   const base = model.core.web.defaultWeights;
 
   return new Promise((resolve) => {
@@ -42,31 +46,43 @@ export function runWizard(model, { settings, pins, cancellable = false }) {
       resolve(result);
     }
 
+    // Weights follow the answers until the visitor adjusts them by hand on the review screen.
     function refreshWeights() {
       if (weightsTouched) return;
-      const w = startingWeights(base, s);
+      const w = weightsFrom(base, chosenOptions(s));
       for (const k of Object.keys(w)) s.weights[k] = w[k];
     }
 
     function render() {
-      const id = STEPS[step];
+      clearTimeout(advance);
+      const steps = stepsFor(s), id = steps[step], q = QUESTIONS[id];
+      const last = step === steps.length - 1, n = steps.length - 1; // the length choice is not counted
+      const unanswered = q && !s.answers[id];
       root.innerHTML = `
         <div class="wz-card" role="dialog" aria-modal="true" aria-labelledby="wz-title">
           <div class="wz-top">
             <span class="wz-brand">WILINSKI <i>ATLAS</i></span>
-            <span class="wz-step num">Step ${step + 1} of ${STEPS.length}</span>
+            <span class="wz-step num">${step ? `Step ${step} of ${n}` : ""}</span>
             ${cancellable ? `<button type="button" class="link" id="wz-cancel">Close</button>` : ""}
           </div>
-          <div class="wz-bar"><i style="width:${((step + 1) / STEPS.length) * 100}%"></i></div>
-          <h2 id="wz-title">${esc(STEP_TITLES[id])}</h2>
+          <div class="wz-bar"><i style="width:${(step / n) * 100}%"></i></div>
+          <h2 id="wz-title">${esc(q ? q.title : SCREEN_TITLES[id])}</h2>
           <div class="wz-body" id="wz-body">${body(id)}</div>
           <div class="wz-nav">
             <button type="button" class="btn" id="wz-back" ${step === 0 ? "disabled" : ""}>Back</button>
-            <button type="button" class="btn primary" id="wz-next">${step === STEPS.length - 1 ? "Show my map" : "Next"}</button>
+            <button type="button" class="btn${unanswered ? "" : " primary"}" id="wz-next" ${id === "depth" && !s.depth ? "disabled" : ""}>${last ? "Show my map" : unanswered ? "Skip" : "Next"}</button>
           </div>
         </div>`;
       wire(id);
       root.querySelector("#wz-next").focus({ preventScroll: true });
+    }
+
+    // Choosing an answer moves on by itself; Next (or Back) cancels the pending move, so a
+    // quick tap on Next never skips a screen.
+    function chooseAndAdvance() {
+      const at = step;
+      render();
+      advance = setTimeout(() => { if (step === at) next(); }, ADVANCE_MS);
     }
 
     // ------------------------------------------------------------- step bodies
@@ -75,11 +91,23 @@ export function runWizard(model, { settings, pins, cancellable = false }) {
         <b>${esc(label)}</b>${sub ? `<span>${esc(sub)}</span>` : ""}</button>`;
     }
 
+    function question(id) {
+      const q = QUESTIONS[id];
+      const cls = q.layout === "rows" ? "" : q.layout;
+      return `${q.sub ? `<p class="wz-lede">${esc(q.sub)}</p>` : ""}
+        <div class="wz-opts ${cls}">${q.options.map((o) => `<button type="button" class="wz-opt" data-q="${id}" data-value="${esc(o.value)}" aria-pressed="${s.answers[id] === o.value}">
+          <b>${esc(o.label)}</b>${o.sub ? `<span>${esc(o.sub)}</span>` : ""}</button>`).join("")}</div>`;
+    }
+
     function body(id) {
-      if (id === "who") {
+      if (QUESTIONS[id]) return question(id);
+      if (id === "depth") {
+        const count = (d) => PATHS[d].filter((x) => x !== "weights").length;
         return `<p class="wz-lede">The Atlas scores every US county and every town over 5,000 people against what you tell it, then puts the areas you already like next to the ones the data says you should see.</p>
-          <div class="wz-opts two">${choice("mode", "single", "Just me", "One login, one set of weights.")}
-          ${choice("mode", "couple", "The two of us", "Invite your partner after setup; you share one map and one set of weights.")}</div>`;
+          <div class="wz-opts two">
+            <button type="button" class="wz-opt depth" data-depth="simple" aria-pressed="${s.depth === "simple"}"><em>Simple</em><b>${count("simple")} questions</b><span>Short and easy: about a minute. Fine-tune later on the map.</span></button>
+            <button type="button" class="wz-opt depth" data-depth="more" aria-pressed="${s.depth === "more"}"><em>More questions</em><b>About ${count("more") - 1}</b><span>More specific results: each answer sharpens your ranking. About four minutes.</span></button>
+          </div>`;
       }
       if (id === "home") {
         const h = s.home ? model.places.get(s.home) : null;
@@ -98,15 +126,6 @@ export function runWizard(model, { settings, pins, cancellable = false }) {
           <div class="money-input"><span>$</span><input id="wz-cap" type="number" inputmode="numeric" min="300" step="${s.tenure === "buy" ? 10000 : 50}" value="${s.cap}"><span>${s.tenure === "buy" ? "" : "/mo"}</span></div></div>
           <p class="muted small">Places over this stay on the map, marked red. Nothing is hidden for being over budget.</p>`;
       }
-      if (id === "life") {
-        return `<div class="wz-q"><h3>Children</h3><div class="wz-opts three">
-            ${choice("kids", "none", "None planned")}${choice("kids", "planned", "Planning to")}${choice("kids", "now", "Have kids now")}</div></div>
-          <div class="wz-q"><h3>Work</h3><div class="wz-opts three">
-            ${choice("income", "portable", "Works anywhere")}${choice("income", "partly", "Partly tied")}${choice("income", "local", "Need local jobs")}</div></div>
-          <div class="wz-q"><h3>Flights abroad</h3><div class="wz-opts three">
-            ${choice("flights", "often", "Often")}${choice("flights", "sometimes", "Now and then")}${choice("flights", "rarely", "Rarely")}</div></div>
-          <p class="muted small">These set where the sliders start on the next steps. You decide the final weights.</p>`;
-      }
       if (id === "winters") {
         const wt = model.homeWinter(s.home);
         if (wt != null) {
@@ -123,7 +142,7 @@ export function runWizard(model, { settings, pins, cancellable = false }) {
         refreshWeights();
         const total = model.factors.reduce((a, f) => a + (s.weights[f.id] || 0), 0)
           + model.layers.reduce((a, l) => a + (s.layers[l.id]?.on ? s.weights[l.id] || 0 : 0), 0);
-        return `<p class="wz-lede">Split your points. What counts is each factor's share of the total, so giving more to one gives less to the rest.</p>
+        return `<p class="wz-lede">Your answers set these. Move any of them if something looks off: what counts is each factor's share of the total, so giving more to one gives less to the rest.</p>
           <div class="total"><span>total points</span><b class="num" id="wz-total">${total}</b></div>
           <div class="weights">${model.factors.map((f) => slider(f.id, f.label, f.blurb, s.weights[f.id] || 0, false)).join("")}</div>
           <details class="sens" ${model.layers.some((l) => s.layers[l.id]?.on) ? "open" : ""}>
@@ -186,7 +205,14 @@ export function runWizard(model, { settings, pins, cancellable = false }) {
         s[name] = value;
         render();
       }));
-      root.querySelectorAll(".wz-opt[data-preset]").forEach((b) => b.addEventListener("click", () => { s.climate = b.dataset.preset; render(); }));
+      root.querySelectorAll(".wz-opt[data-preset]").forEach((b) => b.addEventListener("click", () => { s.climate = b.dataset.preset; chooseAndAdvance(); }));
+      root.querySelectorAll(".wz-opt[data-depth]").forEach((b) => b.addEventListener("click", () => { s.depth = b.dataset.depth; chooseAndAdvance(); }));
+      root.querySelectorAll(".wz-opt[data-q]").forEach((b) => b.addEventListener("click", () => {
+        const q = QUESTIONS[b.dataset.q], opt = q.options.find((o) => o.value === b.dataset.value);
+        s.answers[b.dataset.q] = opt.value;
+        Object.assign(s, opt.set || {});
+        chooseAndAdvance();
+      }));
 
       if (id === "home") {
         searchBox("#wz-home", "#wz-home-results", { counties: false }, (d) => {
@@ -261,12 +287,14 @@ export function runWizard(model, { settings, pins, cancellable = false }) {
     }
 
     function next() {
-      if (STEPS[step] === "money") {
+      clearTimeout(advance);
+      const steps = stepsFor(s);
+      if (steps[step] === "money") {
         const v = Math.round(+root.querySelector("#wz-cap").value);
         if (v > 0) s.cap = v;
       }
-      if (STEPS[step] === "life") refreshWeights();
-      if (step < STEPS.length - 1) { step += 1; render(); return; }
+      if (step < steps.length - 1) { step += 1; render(); return; }
+      refreshWeights();
       s.done = true;
       const btn = root.querySelector("#wz-next");
       btn.disabled = true;

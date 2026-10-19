@@ -4,24 +4,22 @@
 // themselves (the forced trade-off of GOAL.md Principle 7); nothing here is a preference
 // we assume on their behalf beyond what they answered.
 
-// A factor the answers speak to directly gets a fixed share; the rest keep their relative
-// sizes and are rescaled so the total stays 100.
-const RULES = {
-  kids: { now: { schools: 14 }, planned: { schools: 9 }, none: { schools: 0 } },
-  income: { local: { jobs: 14 }, partly: { jobs: 7 }, portable: { jobs: 0 } },
-  flights: { often: { airport: 12 }, sometimes: { airport: 5 }, rarely: { airport: 2 } },
-};
-
-export function startingWeights(base, answers) {
+// The chosen options' effects (see questions.js), applied to the default weights. A
+// `scale` multiplies a factor's default; a `share` fixes a factor's points out of 100,
+// the later answer winning. Factors without a fixed share keep their (scaled) relative
+// sizes and fill the rest, so the total stays 100.
+export function weightsFrom(base, options) {
+  const scaled = { ...base };
   const fixed = {};
-  for (const [question, options] of Object.entries(RULES)) {
-    Object.assign(fixed, options[answers?.[question]] || {});
+  for (const o of options) {
+    for (const [k, m] of Object.entries(o.scale || {})) if (k in scaled) scaled[k] *= m;
+    for (const [k, v] of Object.entries(o.share || {})) if (k in base) fixed[k] = v;
   }
   const fixedTotal = Object.values(fixed).reduce((a, b) => a + b, 0);
   const rest = Object.keys(base).filter((k) => !(k in fixed));
-  const restTotal = rest.reduce((a, k) => a + base[k], 0);
+  const restTotal = rest.reduce((a, k) => a + scaled[k], 0);
   const out = { ...fixed };
-  for (const k of rest) out[k] = restTotal ? (base[k] * (100 - fixedTotal)) / restTotal : 0;
+  for (const k of rest) out[k] = restTotal ? (scaled[k] * (100 - fixedTotal)) / restTotal : 0;
   return roundTo100(out);
 }
 
