@@ -1,0 +1,6 @@
+# netlify.toml for the `site` branch, which holds the finished website and nothing else.
+# The workflow copies this file there on every publish. Netlify publishes the branch as it
+# is: the build command only says so, and must stay something that cannot fail.
+[build]
+  publish = "."
+  command = "echo 'Built by GitHub Actions from main; publishing as is.'"
