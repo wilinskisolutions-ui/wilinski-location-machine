@@ -92,6 +92,7 @@ class TestFirstVisit(unittest.TestCase):
         page.click("#st-guest")  # the start screen: look around without an account
         page.click('.wz-opt[data-depth="simple"]')
         self._answer(page, "who", "couple")
+        self._answer(page, "answering", "together")
         page.wait_for_selector("#wz-cap")
         page.click("#wz-next")  # money: defaults
         self._answer(page, "nature", "mix")
@@ -183,6 +184,84 @@ class TestFirstVisit(unittest.TestCase):
             page.click('.mtabs [data-m="weights"]')  # the phone's tab bar
             self.assertEqual(page.input_value("#w-jobs"), "14", "the map lost the answers' weights")
             self.assertFalse(page.evaluate("document.documentElement.scrollWidth > window.innerWidth"))
+            self.assertEqual(errors, [])
+        finally:
+            ctx.close()
+
+    def _couple_separately(self, page):
+        """A couple, simple path, answering separately: Person 1 answers."""
+        page.goto(self.url)
+        page.click("#st-guest", timeout=30000)
+        page.click('.wz-opt[data-depth="simple"]')
+        self._answer(page, "who", "couple")
+        self._answer(page, "answering", "separately")
+        page.wait_for_selector("#wz-cap")
+        page.click("#wz-next")
+        page.wait_for_selector(".wz-who.p0")
+        self._answer(page, "nature", "wild")
+        page.click('.wz-opt[data-preset="snowy"]')
+        page.wait_for_selector(".wz-opt[data-handoff]")
+
+    def _partner_answers(self, page):
+        page.wait_for_selector(".wz-who.p1")
+        self._answer(page, "nature", "city")
+        page.click('.wz-opt[data-preset="hot"]')
+        page.wait_for_selector(".blend")
+
+    def test_a_couple_answers_separately_and_sees_the_blend(self):
+        ctx, page, errors = self._page(390, 844)
+        try:
+            self._couple_separately(page)
+            page.click('.wz-opt[data-handoff="now"]')
+            self._partner_answers(page)
+            heads = page.locator(".bl-head b").all_inner_texts()
+            self.assertEqual([h.lower() for h in heads], ["p1", "p2", "map"])
+            row = lambda label: page.locator(".bl-row", has_text=label).first.locator("b").all_inner_texts()
+            p1, p2, blended = (int(v) for v in row("Water & nature"))
+            self.assertGreater(p1, p2)
+            self.assertLessEqual(abs(blended - (p1 + p2) / 2), 1)
+            winters = page.locator(".bl-winter b").all_text_contents()
+            self.assertEqual(len(set(winters)), 3, f"snowy and hot should meet in between: {winters}")
+            self.assertIn("differ most", page.inner_text("#wz-body"))
+            self.assertFalse(page.evaluate("document.documentElement.scrollWidth > window.innerWidth"))
+            page.click("#wz-next")
+            page.wait_for_selector("#wz-pick")
+            page.click("#wz-next")
+            page.wait_for_selector("#wizard", state="hidden")
+            page.click('.mtabs [data-m="weights"]')
+            self.assertEqual(int(page.input_value("#w-nature")), blended, "the map does not use the blend")
+            page.click("#acct-menu")
+            self.assertEqual(page.text_content("#mm-partner").strip(), "Redo Person 2's answers")
+            self.assertEqual(errors, [])
+        finally:
+            ctx.close()
+
+    def test_the_partner_can_answer_later_from_the_menu(self):
+        ctx, page, errors = self._page()
+        try:
+            self._couple_separately(page)
+            page.click('.wz-opt[data-handoff="later"]')
+            page.wait_for_selector(".blend")
+            self.assertIn("hasn't answered yet", page.inner_text("#wz-body"))
+            self.assertEqual(page.locator(".bl-row", has_text="Water & nature").first.locator("b").all_inner_texts()[1], "—")
+            page.click("#wz-next")
+            page.wait_for_selector("#wz-pick")
+            page.click("#wz-next")
+            page.wait_for_selector("#wizard", state="hidden")
+            page.click('.left .tabs [data-tab="weights"]')
+            alone = int(page.input_value("#w-nature"))
+            page.click("#acct-menu")
+            page.click("#mm-partner")  # "Add Person 2's answers"
+            self._partner_answers(page)
+            self.assertNotIn("hasn't answered", page.inner_text("#wz-body"))
+            page.click("#wz-next")  # Show my map
+            page.wait_for_selector("#wizard", state="hidden")
+            page.click('.left .tabs [data-tab="weights"]')
+            self.assertLess(int(page.input_value("#w-nature")), alone, "the city lover's answers did not count")
+            page.reload()
+            page.wait_for_selector("#loading", state="hidden", timeout=30000)
+            page.click('.left .tabs [data-tab="weights"]')
+            self.assertLess(int(page.input_value("#w-nature")), alone, "the blend was not saved")
             self.assertEqual(errors, [])
         finally:
             ctx.close()

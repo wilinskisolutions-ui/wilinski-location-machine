@@ -11,7 +11,12 @@
 //   scale  multiply a factor's default weight (nature x1.35 for "mostly nature")
 //   share  give a factor a fixed number of the 100 points, for factors whose default is 0
 //          (schools, local jobs) or that one answer decides (flights to Europe)
-//   set    settings it decides directly (one map or two, kids)
+//   set    settings it decides directly (one map or two, kids, answering together or apart)
+//
+// A couple can answer separately: the household's questions (who, home, budget, places) are
+// asked once, then each person answers the preference questions in turn, and the map uses
+// the blend of the two (blend(), below).
+import { roundTo100, weightsFrom } from "./weights.js";
 
 export const QUESTIONS = {
   who: {
@@ -23,6 +28,16 @@ export const QUESTIONS = {
       { value: "couple", label: "Me and a partner", set: { mode: "couple", kids: "none" } },
       { value: "kids", label: "Me and my kids", set: { mode: "single", kids: "now" }, share: { schools: 14 } },
       { value: "family", label: "My partner, our kids and me", set: { mode: "couple", kids: "now" }, share: { schools: 14 } },
+    ],
+  },
+  answering: {
+    title: "Answer together, or each on your own?",
+    sub: "Either way you share one map.",
+    layout: "rows",
+    when: (s) => s.mode === "couple",
+    options: [
+      { value: "together", label: "Together", sub: "One set of answers for the two of you.", set: { blend: "together" } },
+      { value: "separately", label: "Each on our own, then blend", sub: "You each answer the questions about what you like. The map uses both, and shows where you differ.", set: { blend: "separately" } },
     ],
   },
   kidsFuture: {
@@ -138,27 +153,71 @@ export const QUESTIONS = {
 // The order of each path. Steps that are not in QUESTIONS (home, money, winters, weights,
 // picks) have their own screens in the wizard.
 export const PATHS = {
-  simple: ["who", "money", "nature", "winters", "picks"],
-  more: ["who", "kidsFuture", "home", "money", "cost", "winters", "weather", "nature", "saturday",
-    "safety", "hazard", "health", "work", "flights", "neighbors", "weights", "picks"],
+  simple: ["who", "answering", "money", "nature", "winters", "picks"],
+  more: ["who", "answering", "kidsFuture", "home", "money", "cost", "winters", "weather", "nature",
+    "saturday", "safety", "hazard", "health", "work", "flights", "neighbors", "weights", "picks"],
 };
 
-// Every screen for these settings, starting with the choice of path.
-export function stepsFor(s) {
-  const path = PATHS[s.depth] || PATHS.simple;
-  return ["depth", ...path.filter((id) => !QUESTIONS[id]?.when || QUESTIONS[id].when(s))];
+// What each person answers for themselves when a couple answers separately: everything about
+// what they like. The rest is the household's and is asked once.
+export const PERSONAL = new Set(["kidsFuture", "cost", "winters", "weather", "nature", "saturday",
+  "safety", "hazard", "health", "work", "flights", "neighbors"]);
+
+export const separately = (s) => s.mode === "couple" && s.blend === "separately";
+
+// A person's answers count once they have any.
+const answered = (person) => Boolean(person && (person.climate || Object.keys(person.answers || {}).length));
+export const partnerAnswered = (s) => answered(s.people?.[1]);
+
+function pathFor(s) {
+  return (PATHS[s.depth] || PATHS.simple).filter((id) => !QUESTIONS[id]?.when || QUESTIONS[id].when(s));
+}
+
+// Every screen for these settings, as { id, p }: p is the person (0 or 1) a screen belongs to
+// when a couple answers separately, and absent for the household's screens.
+//   only: "partner"  just the second person's questions and the blend (from the menu, or
+//                    after joining through an invite)
+export function stepsFor(s, { only } = {}) {
+  const path = pathFor(s);
+  const personal = path.filter((id) => PERSONAL.has(id));
+  if (only === "partner") return [...personal.map((id) => ({ id, p: 1 })), { id: "blend" }];
+  if (!separately(s)) return [{ id: "depth" }, ...path.map((id) => ({ id }))];
+  const shared = path.filter((id) => !PERSONAL.has(id) && id !== "weights" && id !== "picks");
+  // The hand-off stays even when the second person will answer later (people[1] === null),
+  // so Back can reach it and change that.
+  const second = s.people?.[1] === null ? [] : personal.map((id) => ({ id, p: 1 }));
+  return [{ id: "depth" }, ...shared.map((id) => ({ id })), ...personal.map((id) => ({ id, p: 0 })),
+    { id: "handoff" }, ...second, { id: "blend" }, { id: "picks" }];
 }
 
 // The chosen options, in path order, for the questions on the current path only: answers
 // left over from a longer run are not applied to a shorter one.
-export function chosenOptions(s) {
+export function chosenOptions(s, answers = s.answers) {
   const out = [];
-  for (const id of stepsFor(s)) {
-    const q = QUESTIONS[id], value = s.answers?.[id];
+  for (const id of pathFor(s)) {
+    const q = QUESTIONS[id], value = answers?.[id];
     const opt = q && q.options.find((o) => o.value === value);
     if (opt) out.push(opt);
   }
   return out;
+}
+
+// A couple answering separately: each person's starting weights (the household's answers
+// plus their own), and the map's, which is the plain average, rounded back to 100. Winters
+// land on the preset halfway between the two choices, rounding warmer. Until the second
+// person answers, the map follows the first. Null when nobody has answered yet.
+export function blend(base, s, presets) {
+  // The household's answers only: a preference left in s.answers by an earlier run answered
+  // together must not stand in for a question a person skipped.
+  const shared = Object.fromEntries(Object.entries(s.answers || {}).filter(([k]) => !PERSONAL.has(k)));
+  const slots = [0, 1].map((i) => s.people?.[i]);
+  const each = slots.map((x) => (answered(x) ? weightsFrom(base, chosenOptions(s, { ...shared, ...x.answers })) : null));
+  const got = each.filter(Boolean);
+  if (!got.length) return null;
+  const mean = Object.fromEntries(Object.keys(base).map((k) => [k, got.reduce((a, w) => a + w[k], 0) / got.length]));
+  const at = slots.filter(answered).map((x) => presets.findIndex((p) => p.id === x.climate)).filter((i) => i >= 0);
+  const climate = at.length ? presets[Math.round(at.reduce((a, b) => a + b, 0) / at.length)].id : s.climate;
+  return { weights: roundTo100(mean), climate, each };
 }
 
 // Settings saved before these questions existed (mode, kids, income, flights) become the

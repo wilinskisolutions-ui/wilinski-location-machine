@@ -1,7 +1,9 @@
 // The setup wizard. Its result is a settings object and a list of pinned areas, saved to
 // this browser or, for an account, to Supabase. The visitor first picks a length: five
 // questions, or about fifteen (questions.js); every answer sets where the weights start.
-import { answersFromLegacy, chosenOptions, PATHS, QUESTIONS, stepsFor } from "./questions.js";
+// A couple can answer separately: each person takes the preference questions in turn and
+// the map uses the blend of the two.
+import { answersFromLegacy, blend, chosenOptions, PATHS, QUESTIONS, separately, stepsFor } from "./questions.js";
 import { climateChoices, presetFor, weightsFrom } from "./weights.js";
 import { debounce, esc } from "./util.js";
 
@@ -12,6 +14,8 @@ const SCREEN_TITLES = {
   money: "What can you spend?",
   winters: "What should January feel like?",
   weights: "Here's what your answers add up to",
+  handoff: "Over to your partner",
+  blend: "How your answers blend",
   picks: "Any places already on your list?",
 };
 const MAX_PICKS = 5;
@@ -27,10 +31,23 @@ export function closeWizard() {
   document.body.classList.remove("wizard-open");
 }
 
-export function runWizard(model, { settings, pins, cancellable = false }) {
+// only: "partner" runs just the second person's questions and the blend.
+export function runWizard(model, { settings, pins, cancellable = false, only = null }) {
   const root = document.getElementById("wizard");
   const s = structuredClone(settings);
   if (!s.answers) s.answers = s.done ? answersFromLegacy(s) : {};
+  // Two people's own answers, when a couple answers separately. people[1] === null means the
+  // second person will answer later.
+  const ensurePeople = () => {
+    if (!Array.isArray(s.people)) s.people = [{ answers: {} }, { answers: {} }];
+    if (!s.people[0]) s.people[0] = { answers: {} };
+    if (s.people[1] === undefined || (only && !s.people[1])) s.people[1] = { answers: {} };
+  };
+  if (separately(s) || only) ensurePeople();
+  const stepsNow = () => stepsFor(s, { only });
+  const person = (st) => (st.p == null ? null : s.people[st.p]);
+  const answersAt = (st) => (st.p == null ? s.answers : (person(st).answers ||= {}));
+  const climateAt = (st) => (st.p == null ? s.climate : person(st).climate);
   let picks = structuredClone(pins || []);
   let step = 0;
   let weightsTouched = false; // set once the visitor moves a slider on the review screen
@@ -47,7 +64,16 @@ export function runWizard(model, { settings, pins, cancellable = false }) {
     }
 
     // Weights follow the answers until the visitor adjusts them by hand on the review screen.
+    // Answered separately, the map takes the blend of the two people.
     function refreshWeights() {
+      if (separately(s)) {
+        const b = blend(base, s, model.presets);
+        if (b) {
+          for (const k of Object.keys(b.weights)) s.weights[k] = b.weights[k];
+          s.climate = b.climate;
+        }
+        return;
+      }
       if (weightsTouched) return;
       const w = weightsFrom(base, chosenOptions(s));
       for (const k of Object.keys(w)) s.weights[k] = w[k];
@@ -55,25 +81,27 @@ export function runWizard(model, { settings, pins, cancellable = false }) {
 
     function render() {
       clearTimeout(advance);
-      const steps = stepsFor(s), id = steps[step], q = QUESTIONS[id];
-      const last = step === steps.length - 1, n = steps.length - 1; // the length choice is not counted
-      const unanswered = q && !s.answers[id];
+      const steps = stepsNow(), st = steps[step], id = st.id, q = QUESTIONS[id];
+      const first = steps[0].id === "depth" ? 0 : 1; // the length choice is not counted
+      const at = step + first, n = steps.length - 1 + first, last = step === steps.length - 1;
+      const unanswered = q && !answersAt(st)[id];
       root.innerHTML = `
         <div class="wz-card" role="dialog" aria-modal="true" aria-labelledby="wz-title">
           <div class="wz-top">
             <span class="wz-brand">WILINSKI <i>ATLAS</i></span>
-            <span class="wz-step num">${step ? `Step ${step} of ${n}` : ""}</span>
+            <span class="wz-step num">${at ? `Step ${at} of ${n}` : ""}</span>
             ${cancellable ? `<button type="button" class="link" id="wz-cancel">Close</button>` : ""}
           </div>
-          <div class="wz-bar"><i style="width:${(step / n) * 100}%"></i></div>
+          <div class="wz-bar"><i style="width:${(at / n) * 100}%"></i></div>
+          ${st.p != null ? `<p class="wz-who p${st.p}">Person ${st.p + 1}</p>` : ""}
           <h2 id="wz-title">${esc(q ? q.title : SCREEN_TITLES[id])}</h2>
-          <div class="wz-body" id="wz-body">${body(id)}</div>
+          <div class="wz-body" id="wz-body">${body(st)}</div>
           <div class="wz-nav">
             <button type="button" class="btn" id="wz-back" ${step === 0 ? "disabled" : ""}>Back</button>
             <button type="button" class="btn${unanswered ? "" : " primary"}" id="wz-next" ${id === "depth" && !s.depth ? "disabled" : ""}>${last ? "Show my map" : unanswered ? "Skip" : "Next"}</button>
           </div>
         </div>`;
-      wire(id);
+      wire(st);
       root.querySelector("#wz-next").focus({ preventScroll: true });
     }
 
@@ -91,18 +119,19 @@ export function runWizard(model, { settings, pins, cancellable = false }) {
         <b>${esc(label)}</b>${sub ? `<span>${esc(sub)}</span>` : ""}</button>`;
     }
 
-    function question(id) {
+    function question(id, answers) {
       const q = QUESTIONS[id];
       const cls = q.layout === "rows" ? "" : q.layout;
       return `${q.sub ? `<p class="wz-lede">${esc(q.sub)}</p>` : ""}
-        <div class="wz-opts ${cls}">${q.options.map((o) => `<button type="button" class="wz-opt" data-q="${id}" data-value="${esc(o.value)}" aria-pressed="${s.answers[id] === o.value}">
+        <div class="wz-opts ${cls}">${q.options.map((o) => `<button type="button" class="wz-opt" data-q="${id}" data-value="${esc(o.value)}" aria-pressed="${answers[id] === o.value}">
           <b>${esc(o.label)}</b>${o.sub ? `<span>${esc(o.sub)}</span>` : ""}</button>`).join("")}</div>`;
     }
 
-    function body(id) {
-      if (QUESTIONS[id]) return question(id);
+    function body(st) {
+      const id = st.id;
+      if (QUESTIONS[id]) return question(id, answersAt(st));
       if (id === "depth") {
-        const count = (d) => PATHS[d].filter((x) => x !== "weights").length;
+        const count = (d) => PATHS[d].filter((x) => x !== "weights" && x !== "answering").length;
         return `<p class="wz-lede">The Atlas scores every US county and every town over 5,000 people against what you tell it, then puts the areas you already like next to the ones the data says you should see.</p>
           <div class="wz-opts two">
             <button type="button" class="wz-opt depth" data-depth="simple" aria-pressed="${s.depth === "simple"}"><em>Simple</em><b>${count("simple")} questions</b><span>Short and easy: about a minute. Fine-tune later on the map.</span></button>
@@ -132,12 +161,21 @@ export function runWizard(model, { settings, pins, cancellable = false }) {
           return `<p class="wz-lede">Winters where you live now average <b class="num">${Math.round(wt)}°F</b> (December to February). Compared with that, you want:</p>
             <div class="wz-opts">${climateChoices(wt, model.presets).map((c) => {
               const p = model.presets.find((x) => x.id === c.preset);
-              return `<button type="button" class="wz-opt row" data-preset="${p.id}" aria-pressed="${s.climate === p.id}"><b>${esc(c.label)}</b><span>${esc(p.label)} · ${p.winter[0]}-${p.winter[1]}°F</span></button>`;
+              return `<button type="button" class="wz-opt row" data-preset="${p.id}" aria-pressed="${climateAt(st) === p.id}"><b>${esc(c.label)}</b><span>${esc(p.label)} · ${p.winter[0]}-${p.winter[1]}°F</span></button>`;
             }).join("")}</div>`;
         }
         return `<p class="wz-lede">Average winter temperature (December to February) you'd be happiest with:</p>
-          <div class="wz-opts">${model.presets.map((p) => `<button type="button" class="wz-opt row" data-preset="${p.id}" aria-pressed="${s.climate === p.id}"><b>${esc(p.label)}</b><span>${p.winter[0]}-${p.winter[1]}°F</span></button>`).join("")}</div>`;
+          <div class="wz-opts">${model.presets.map((p) => `<button type="button" class="wz-opt row" data-preset="${p.id}" aria-pressed="${climateAt(st) === p.id}"><b>${esc(p.label)}</b><span>${p.winter[0]}-${p.winter[1]}°F</span></button>`).join("")}</div>`;
       }
+      if (id === "handoff") {
+        const count = stepsFor({ ...s, people: [{}, {}] }).filter((x) => x.p === 1).length;
+        return `<p class="wz-lede">Person 1 is done. Your partner answers the same ${count} questions, without seeing Person 1's answers.</p>
+          <div class="wz-opts">
+            <button type="button" class="wz-opt" data-handoff="now" aria-pressed="${s.people[1] !== null}"><b>Hand it over now</b><span>Your partner answers on this device.</span></button>
+            <button type="button" class="wz-opt" data-handoff="later" aria-pressed="${s.people[1] === null}"><b>They'll answer later</b><span>On this device or their own phone: Menu, then Add Person 2's answers. Until then the map follows Person 1.</span></button>
+          </div>`;
+      }
+      if (id === "blend") return blendSummary();
       if (id === "weights") {
         refreshWeights();
         const total = model.factors.reduce((a, f) => a + (s.weights[f.id] || 0), 0)
@@ -162,6 +200,30 @@ export function runWizard(model, { settings, pins, cancellable = false }) {
           ${picks.length ? "" : `<p class="muted small">No areas yet. You can skip this and add them from the map later.</p>`}`;
       }
       return "";
+    }
+
+    // Each person's starting weights next to the map's, and where the two differ most.
+    function blendSummary() {
+      const b = blend(base, s, model.presets);
+      if (!b) return `<p class="wz-lede">Nobody has answered the questions yet, so the map starts from the defaults. Go back to answer them.</p>`;
+      const [a, c] = b.each;
+      const rows = model.factors.map((f) => ({ f, a: a?.[f.id], c: c?.[f.id], m: b.weights[f.id] }))
+        .filter((r) => r.m || r.a || r.c).sort((x, y) => y.m - x.m);
+      const gaps = a && c ? rows.filter((r) => Math.abs(r.a - r.c) >= 4)
+        .sort((x, y) => Math.abs(y.a - y.c) - Math.abs(x.a - x.c)).slice(0, 2) : [];
+      const winter = (id) => model.presets.find((p) => p.id === id)?.label || "—";
+      const cell = (v) => (v == null ? "—" : v);
+      return `<p class="wz-lede">${a && c ? "The map starts from the average of your two sets of answers. Points are out of 100."
+          : `${a ? "Person 2" : "Person 1"} hasn't answered yet, so the map follows ${a ? "Person 1" : "Person 2"} for now. Add the missing answers any time from the menu.`}</p>
+        <div class="blend" role="table" aria-label="Each person's weights and the map's">
+          <div class="bl-row bl-head" role="row"><span>Factor</span><b class="p0" title="Person 1">P1</b><b class="p1" title="Person 2">P2</b><b class="map">Map</b></div>
+          ${rows.map((r) => `<div class="bl-row${gaps.includes(r) ? " gap" : ""}" role="row"><span>${esc(r.f.label)}</span><b class="num">${cell(r.a)}</b><b class="num">${cell(r.c)}</b><b class="num map">${r.m}</b></div>`).join("")}
+        </div>
+        <p class="small bl-winter">${a && c && s.people[0]?.climate && s.people[1]?.climate
+          ? `Winters: Person 1 wants <b>${esc(winter(s.people[0].climate))}</b>, Person 2 <b>${esc(winter(s.people[1].climate))}</b>. The map uses <b class="map">${esc(winter(b.climate))}</b>.`
+          : `Winters: the map uses <b class="map">${esc(winter(b.climate))}</b>.`}</p>
+        ${gaps.length ? `<p class="small">You differ most on ${gaps.map((r) => `<b>${esc(r.f.label)}</b> (${r.a} vs ${r.c})`).join(" and ")}. Worth talking over before you visit anywhere.</p>`
+          : a && c ? `<p class="small">You two are remarkably in sync.</p>` : ""}`;
     }
 
     function slider(id, label, blurb, value, disabled) {
@@ -194,7 +256,8 @@ export function runWizard(model, { settings, pins, cancellable = false }) {
       }, 120));
     }
 
-    function wire(id) {
+    function wire(st) {
+      const id = st.id;
       root.querySelector("#wz-back").addEventListener("click", () => { step = Math.max(0, step - 1); render(); });
       root.querySelector("#wz-next").addEventListener("click", next);
       const cancel = root.querySelector("#wz-cancel");
@@ -205,12 +268,21 @@ export function runWizard(model, { settings, pins, cancellable = false }) {
         s[name] = value;
         render();
       }));
-      root.querySelectorAll(".wz-opt[data-preset]").forEach((b) => b.addEventListener("click", () => { s.climate = b.dataset.preset; chooseAndAdvance(); }));
+      root.querySelectorAll(".wz-opt[data-preset]").forEach((b) => b.addEventListener("click", () => {
+        if (st.p == null) s.climate = b.dataset.preset; else person(st).climate = b.dataset.preset;
+        chooseAndAdvance();
+      }));
+      root.querySelectorAll(".wz-opt[data-handoff]").forEach((b) => b.addEventListener("click", () => {
+        if (b.dataset.handoff === "later") s.people[1] = null;
+        else if (!s.people[1]) s.people[1] = { answers: {} };
+        chooseAndAdvance();
+      }));
       root.querySelectorAll(".wz-opt[data-depth]").forEach((b) => b.addEventListener("click", () => { s.depth = b.dataset.depth; chooseAndAdvance(); }));
       root.querySelectorAll(".wz-opt[data-q]").forEach((b) => b.addEventListener("click", () => {
         const q = QUESTIONS[b.dataset.q], opt = q.options.find((o) => o.value === b.dataset.value);
-        s.answers[b.dataset.q] = opt.value;
+        answersAt(st)[b.dataset.q] = opt.value;
         Object.assign(s, opt.set || {});
+        if (separately(s)) ensurePeople();
         chooseAndAdvance();
       }));
 
@@ -288,8 +360,8 @@ export function runWizard(model, { settings, pins, cancellable = false }) {
 
     function next() {
       clearTimeout(advance);
-      const steps = stepsFor(s);
-      if (steps[step] === "money") {
+      const steps = stepsNow();
+      if (steps[step].id === "money") {
         const v = Math.round(+root.querySelector("#wz-cap").value);
         if (v > 0) s.cap = v;
       }
