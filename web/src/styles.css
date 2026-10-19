@@ -337,3 +337,8 @@ body.wizard-open { overflow: hidden; }
   /* Clear of the legend (bottom left of the map): bottom right of the map, two lines. */
   .donate { left: auto; transform: none; right: calc(var(--right) + 16px); max-width: 400px; }
 }
+
+/* The two lengths of setup. */
+.wz-opt.depth { gap: 4px; padding: 16px; }
+.wz-opt.depth em { font: 600 11px var(--display); letter-spacing: .14em; text-transform: uppercase; color: var(--signal); font-style: normal; }
+.wz-opt.depth b { font: 600 19px var(--display); }

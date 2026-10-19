@@ -81,20 +81,21 @@ class TestFirstVisit(unittest.TestCase):
         page.route("https://fonts.gstatic.com/**", lambda r: r.abort())
         return ctx, page, errors
 
+    def _answer(self, page, question, value):
+        """Tap an answer; the wizard moves on by itself."""
+        page.click(f'.wz-opt[data-q="{question}"][data-value="{value}"]')
+
     def _wizard(self, page):
+        """The simple path: five questions."""
         page.goto(self.url)
         page.wait_for_selector("#wizard:not([hidden]) .wz-card", timeout=30000)
         page.click("#st-guest")  # the start screen: look around without an account
-        page.click('.wz-opt[data-value="couple"]')
-        page.click("#wz-next")
-        page.fill("#wz-home", "Harrisburg")
-        page.click('#wz-home-results button[data-id="4232800"]')
-        page.click("#wz-next")
+        page.click('.wz-opt[data-depth="simple"]')
+        self._answer(page, "who", "couple")
+        page.wait_for_selector("#wz-cap")
         page.click("#wz-next")  # money: defaults
-        page.click("#wz-next")  # life: defaults
-        page.click('.wz-opt.row[data-preset="mild"]')
-        page.click("#wz-next")
-        page.click("#wz-next")  # weights: defaults
+        self._answer(page, "nature", "mix")
+        page.click('.wz-opt[data-preset="mild"]')
         page.fill("#wz-pick", "Franklin")
         page.click('#wz-pick-results button[data-id="4727740"]')
         page.click("#wz-next")
@@ -137,6 +138,65 @@ class TestFirstVisit(unittest.TestCase):
             self._wizard(page)
             self.assertFalse(page.evaluate("document.documentElement.scrollWidth > window.innerWidth"))
             self.assertEqual(errors, [])
+        finally:
+            ctx.close()
+
+    def test_more_questions_shape_the_starting_weights(self):
+        ctx, page, errors = self._page(390, 844)
+        try:
+            page.goto(self.url)
+            page.click("#st-guest", timeout=30000)
+            page.click('.wz-opt[data-depth="more"]')
+            page.wait_for_selector('.wz-opt[data-q="who"]')
+            self.assertEqual(page.inner_text(".wz-step"), "Step 1 of 17")
+            self._answer(page, "who", "solo")
+            self._answer(page, "kidsFuture", "no")
+            page.fill("#wz-home", "Harrisburg")
+            page.click('#wz-home-results button[data-id="4232800"]')
+            page.click("#wz-next")
+            page.wait_for_selector("#wz-cap")
+            page.click("#wz-next")
+            self._answer(page, "cost", "tight")
+            page.click(".wz-opt[data-preset]")  # winters, relative to home: the first choice
+            self._answer(page, "weather", "some")
+            self._answer(page, "nature", "wild")
+            self._answer(page, "saturday", "home")
+            self._answer(page, "safety", "top")
+            self._answer(page, "hazard", "some")
+            self._answer(page, "health", "sometimes")
+            self._answer(page, "work", "local")
+            self._answer(page, "flights", "rarely")
+            self._answer(page, "neighbors", "friendly")
+            page.wait_for_selector("#wz-total")  # the review screen
+            weight = lambda f: int(page.input_value(f"#wz-w-{f}"))
+            self.assertEqual(weight("jobs"), 14)
+            self.assertEqual(weight("airport"), 2)
+            self.assertGreater(weight("safety"), 15)
+            self.assertGreater(weight("cost"), 16)
+            self.assertGreater(weight("nature"), 9)
+            self.assertLess(weight("food"), 10)
+            self.assertEqual(page.inner_text("#wz-total"), "100")
+            page.click("#wz-next")
+            page.wait_for_selector("#wz-pick")
+            page.click("#wz-next")  # no places yet: show the map
+            page.wait_for_selector("#wizard", state="hidden")
+            page.click('.mtabs [data-m="weights"]')  # the phone's tab bar
+            self.assertEqual(page.input_value("#w-jobs"), "14", "the map lost the answers' weights")
+            self.assertFalse(page.evaluate("document.documentElement.scrollWidth > window.innerWidth"))
+            self.assertEqual(errors, [])
+        finally:
+            ctx.close()
+
+    def test_a_quick_tap_on_next_never_skips_a_screen(self):
+        ctx, page, _ = self._page()
+        try:
+            page.goto(self.url)
+            page.click("#st-guest", timeout=30000)
+            page.click('.wz-opt[data-depth="simple"]')
+            page.click('.wz-opt[data-q="who"][data-value="solo"]')
+            page.click("#wz-next")  # before the answer moves on by itself
+            page.wait_for_timeout(400)
+            self.assertEqual(page.locator("#wz-cap").count(), 1, "skipped past the budget")
         finally:
             ctx.close()
 

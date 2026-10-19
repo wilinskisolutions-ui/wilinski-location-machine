@@ -791,6 +791,18 @@ and closed to signed-out visitors.
 - **"The numbers" became a folded "Nerd Stats" section**, and a dismissible floating
   banner asks for a coffee, linking to the household's Stripe Payment Link.
 
+**2026-10-19: setup comes in two lengths, in everyday questions.** The visitor chooses
+**Simple** (5 questions: who's moving, budget, nature or city, winters, places on their
+list) or **More questions** (15, plus a review of the weights they add up to and the
+places list). Questions are things anyone can answer ("Nature or city?", "A perfect
+Saturday looks like…", "How well do you want to know your neighbors?"), and each answer
+only moves a factor the data measures: a `scale` on its default weight or a fixed `share`
+for factors that start at 0 (web/src/questions.js). "Small town or big city?" is not
+asked: the town-size factor scores against a fixed population band, so a weight cannot
+say which way a visitor leans. Answers set where the sliders start; the visitor can still
+move every one. A tapped answer moves on by itself, and a quick tap on Next never skips
+a screen (tested both ways).
+
 ---
 
 ## Data inventory
