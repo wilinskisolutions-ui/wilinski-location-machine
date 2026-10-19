@@ -54,8 +54,9 @@ function signInModal() {
 }
 
 // ------------------------------------------------------------------ donate banner
-// Floats over the map until dismissed; a dismissal holds on this device for 30 days. The
-// same link stays in the menus. Hidden entirely when the build has no donate link.
+// Floats over the map until dismissed. A dismissal lasts for this visit (the browser tab's
+// session: reloads keep it hidden), and the banner is back the next time someone comes to
+// the site. The same link stays in the menus. Hidden entirely when the build has no link.
 const BANNER_KEY = "atlas.donate.hidden";
 const COFFEE = `<svg class="donate-ico" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
   <path d="M4 10h12v4.5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5V10z"/><path d="M16 11.5h1.5a2.5 2.5 0 0 1 0 5H16"/>
@@ -63,7 +64,7 @@ const COFFEE = `<svg class="donate-ico" viewBox="0 0 24 24" width="24" height="2
 
 function donateBanner() {
   if (!DONATE_URL) return;
-  try { if (Date.now() - Number(localStorage.getItem(BANNER_KEY) || 0) < 30 * 864e5) return; }
+  try { if (sessionStorage.getItem(BANNER_KEY)) return; }
   catch { /* storage blocked: show the banner */ }
   const b = document.createElement("aside");
   b.className = "donate";
@@ -73,7 +74,7 @@ function donateBanner() {
     <button type="button" class="donate-x" aria-label="Hide this banner">×</button>`;
   b.querySelector(".donate-x").addEventListener("click", () => {
     b.remove();
-    try { localStorage.setItem(BANNER_KEY, String(Date.now())); } catch { /* it returns next visit */ }
+    try { sessionStorage.setItem(BANNER_KEY, "1"); } catch { /* it returns on the next page load */ }
   });
   document.body.appendChild(b);
 }
