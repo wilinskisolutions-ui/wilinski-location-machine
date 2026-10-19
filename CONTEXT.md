@@ -803,6 +803,19 @@ say which way a visitor leans. Answers set where the sliders start; the visitor 
 move every one. A tapped answer moves on by itself, and a quick tap on Next never skips
 a screen (tested both ways).
 
+**2026-10-19, later: a couple can answer separately and get one blended map.** Asked for
+after the LinkedIn post promised it ("it will weigh both your answers"). A couple now
+chooses "Together" or "Each on our own, then blend". Apart, the household's questions (who,
+home, budget, places) are asked once; each person answers the preference questions in turn
+on the same device, or the second person later from the menu or straight after joining
+through an invite. The map's starting weights are the plain average of the two people's,
+rounded to 100, and winters land on the preset halfway between their choices (a tie rounds
+warmer). A summary shows both sets of weights beside the map's and names the two factors
+they differ on most. Stored inside the shared settings (`people`, `blend`), so no migration;
+saving the second person's answers re-reads the map first, so the first person's edits
+made meanwhile are kept. Answers left from an earlier run answered together are ignored,
+so a skipped question never borrows one.
+
 ---
 
 ## Data inventory

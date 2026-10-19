@@ -12,6 +12,7 @@ import "./styles.css";
 import { createApp } from "./app.js";
 import * as auth from "./auth.js";
 import { defaultSettings, Model, normalizeSettings } from "./model.js";
+import { blend, partnerAnswered, separately } from "./questions.js";
 import { LocalStore, RemoteStore } from "./store.js";
 import { codeForm, startScreen } from "./signin.js";
 import { esc } from "./util.js";
@@ -83,6 +84,10 @@ function donateBanner() {
 function renderAccount(user) {
   const box = $("#account");
   const donate = DONATE_URL ? `<a class="btn" href="${esc(DONATE_URL)}" target="_blank" rel="noopener">Support this project</a>` : "";
+  // A couple answering separately can add or redo the second person's answers.
+  const partner = () => (separately(model.settings)
+    ? `<button type="button" class="btn" id="mm-partner">${partnerAnswered(model.settings) ? "Redo Person 2's answers" : "Add Person 2's answers"}</button>` : "");
+  const wirePartner = (m, close) => m.querySelector("#mm-partner")?.addEventListener("click", () => { close(); editPartner(); });
   if (!user) {
     box.innerHTML = `${auth.configured ? `<button type="button" class="btn primary" id="acct-save">Save your map</button>` : ""}
       <button type="button" class="btn" id="acct-menu" aria-haspopup="true">Menu</button>`;
@@ -90,10 +95,12 @@ function renderAccount(user) {
     $("#acct-menu").addEventListener("click", () => modal("This map", `
       <div class="md-list">
         <button type="button" class="btn" id="mm-setup">Redo setup</button>
+        ${partner()}
         ${donate}
         <button type="button" class="btn danger" id="mm-reset">Start over (clears this device)</button>
       </div>`, (m, close) => {
       m.querySelector("#mm-setup").addEventListener("click", () => { close(); editSetup(); });
+      wirePartner(m, close);
       m.querySelector("#mm-reset").addEventListener("click", () => { local.clear(); window.location.reload(); });
     }));
     return;
@@ -103,6 +110,7 @@ function renderAccount(user) {
     <p class="small muted">Signed in as ${esc(user.email || "")}. ${household?.mode === "couple" ? "This is a shared map for two." : "This map is just yours."}</p>
     <div class="md-list">
       <button type="button" class="btn" id="mm-setup">Redo setup</button>
+      ${partner()}
       ${household?.mode === "couple" ? `<button type="button" class="btn" id="mm-invite">Invite your partner</button>` : `<button type="button" class="btn" id="mm-couple">Make this a couple's map</button>`}
       ${donate}
       <button type="button" class="btn" id="mm-out">Sign out</button>
@@ -110,6 +118,7 @@ function renderAccount(user) {
     </div>
     <div id="mm-extra"></div>`, (m, close) => {
     m.querySelector("#mm-setup").addEventListener("click", () => { close(); editSetup(); });
+    wirePartner(m, close);
     m.querySelector("#mm-out").addEventListener("click", async () => { await auth.signOut(); window.location.reload(); });
     const invite = async () => {
       const extra = m.querySelector("#mm-extra");
@@ -163,6 +172,24 @@ async function editSetup() {
   closeWizard();
 }
 
+// The second person's own answers, for a couple answering separately: from the menu, or
+// right after joining through an invite. Only their part and the blend change, applied to a
+// fresh read of the map, so anything the first person changed meanwhile is kept.
+async function editPartner() {
+  const store = app.store;
+  const result = await runWizard(model, { settings: model.settings, pins: [], cancellable: true, only: "partner" });
+  if (!result) return;
+  const data = await Promise.resolve(store.load());
+  const latest = normalizeSettings(model.core, data.settings);
+  latest.people = [latest.people?.[0] || result.settings.people[0], result.settings.people[1]];
+  const b = blend(model.core.web.defaultWeights, latest, model.presets);
+  if (b) { Object.assign(latest.weights, b.weights); latest.climate = b.climate; }
+  await store.saveSettings(latest);
+  data.settings = latest;
+  app.show(data);
+  closeWizard();
+}
+
 // The loading screen stays up until there is something to show: a returning visitor's map
 // arrives only after the sign-in check (which loads the Supabase library) and, signed in,
 // a round trip to Supabase; until then the map would be empty.
@@ -178,9 +205,11 @@ async function firstRun(store) {
 // ------------------------------------------------------------------ accounts
 async function enterAccount(user, inviteToken) {
   const draft = local.load();
+  let joined = false;
   if (inviteToken) {
     try {
       household = { id: await auth.acceptInvite(inviteToken), mode: "couple" };
+      joined = true;
     } catch (err) {
       const msg = String(err.message || "");
       if (msg.includes("already_in_household")) {
@@ -225,6 +254,8 @@ async function enterAccount(user, inviteToken) {
     fresh.settings = normalizeSettings(model.core, fresh.settings);
     app.show(fresh);
   });
+  // A partner who just joined a map set to "each on our own" gets their questions straight away.
+  if (joined && separately(data.settings) && !partnerAnswered(data.settings)) await editPartner();
 }
 
 function clearUrl() {

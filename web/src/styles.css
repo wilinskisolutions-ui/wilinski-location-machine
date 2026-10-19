@@ -342,3 +342,19 @@ body.wizard-open { overflow: hidden; }
 .wz-opt.depth { gap: 4px; padding: 16px; }
 .wz-opt.depth em { font: 600 11px var(--display); letter-spacing: .14em; text-transform: uppercase; color: var(--signal); font-style: normal; }
 .wz-opt.depth b { font: 600 19px var(--display); }
+
+/* A couple answering separately: whose turn it is, and how the two blend. */
+.wz-who { margin: 0 0 -6px; font: 600 12px var(--display); letter-spacing: .16em; text-transform: uppercase; }
+.wz-who.p0, .bl-head .p0 { color: var(--pick); }
+.wz-who.p1, .bl-head .p1 { color: var(--rival); }
+.blend { border: 1px solid var(--line-2); border-radius: 8px; overflow: hidden; }
+.bl-row { display: grid; grid-template-columns: minmax(0, 1fr) 72px 72px 56px; gap: 8px; align-items: center;
+  padding: 8px 12px; border-top: 1px solid var(--line); font-size: 14px; }
+.bl-row:first-child { border-top: 0; }
+.bl-row b { text-align: right; font-weight: 500; }
+.bl-row b.map { color: var(--signal); font-weight: 600; }
+.bl-head { background: var(--panel-2); font: 600 11px var(--display); letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
+.bl-row.gap { background: rgba(255, 180, 84, .07); }
+.bl-row.gap span { color: var(--pick); }
+.bl-winter b.map { color: var(--signal); }
+@media (max-width: 480px) { .bl-row { grid-template-columns: minmax(0, 1fr) 58px 58px 44px; gap: 6px; padding: 8px 10px; font-size: 13px; } }
