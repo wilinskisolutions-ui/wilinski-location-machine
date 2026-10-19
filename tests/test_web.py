@@ -255,7 +255,7 @@ class TestFirstVisit(unittest.TestCase):
         finally:
             ctx.close()
 
-    def test_donate_banner_links_out_and_can_be_hidden(self):
+    def test_donate_banner_hides_for_the_visit_and_returns_next_time(self):
         ctx, page, _ = self._page(390, 844)
         try:
             self._wizard(page)
@@ -269,7 +269,11 @@ class TestFirstVisit(unittest.TestCase):
             self.assertEqual(page.locator("#donate").count(), 0)
             page.reload()
             page.wait_for_selector("#loading", state="hidden", timeout=30000)
-            self.assertEqual(page.locator("#donate").count(), 0, "a hidden banner came back")
+            self.assertEqual(page.locator("#donate").count(), 0, "came back within the same visit")
+            later = ctx.new_page()  # a later visit: same browser, same saved map, new tab
+            later.goto(self.url)
+            later.wait_for_selector("#loading", state="hidden", timeout=30000)
+            self.assertEqual(later.locator("#donate").count(), 1, "stayed hidden on the next visit")
         finally:
             ctx.close()
 
